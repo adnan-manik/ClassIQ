@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #0f172a;
+
+  /* ClassIQ brand tokens (from Assets/ClassIQ.svg) */
+  --brand-page: #d9d8d8;          /* outer warm grey, the SVG canvas color */
+  --brand-mint: #e9fffd;          /* hero card mint */
+  --brand-mint-soft: #f2fffe;     /* lighter mint for inner accents */
+  --brand-teal: #0d9488;          /* primary teal */
+  --brand-teal-dark: #0f766e;     /* darker teal for accent blobs */
+  --brand-purple: #4a3487;        /* purple for super-admin accent */
+  --brand-coral: #f97066;         /* warm accent: forgot-password / sign-up links */
+  --brand-input: #80869a;         /* input borders */
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
