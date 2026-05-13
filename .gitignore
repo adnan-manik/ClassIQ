@@ -1,0 +1,18 @@
+# Repo-root .gitignore (covers tools/scripts at root; subprojects have their own)
+
+# Node deps anywhere (subprojects keep their own package.json tracked)
+**/node_modules/
+
+# Ad-hoc tooling deps in db/ — script-only, not source code
+/db/package.json
+/db/package-lock.json
+
+# Env files
+.env*
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+
+# MCP credentials cache (sometimes written by MCP servers)
+.mcp.json
