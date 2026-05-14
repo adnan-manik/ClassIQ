@@ -16,3 +16,8 @@ Thumbs.db
 
 # MCP credentials cache (sometimes written by MCP servers)
 .mcp.json
+
+# Claude Code: keep team allowlist in .claude/settings.json, ignore personal
+.claude/settings.local.json
+.claude/cache/
+.claude/history/
