@@ -23,13 +23,15 @@ export default async function HodDashboardPage() {
     { data: sections },
     { data: profiles },
     { data: simResults },
+    { data: terms },
+    { data: institutions },
   ] = await Promise.all([
     supabase.from("students").select("*", { count: "exact", head: true }),
     supabase.from("teachers").select("*", { count: "exact", head: true }),
     supabase
       .from("sections")
       .select(
-        "id, label, state, course:courses(code, name), teacher:teachers(full_name)",
+        "id, label, state, course:courses(code, name), teacher:teachers(full_name), section_students(count)",
       )
       .order("label"),
     supabase
@@ -43,7 +45,19 @@ export default async function HodDashboardPage() {
       .select(
         "section_id, compatibility_score, predicted_outcome, social_graph_impact",
       ),
+    supabase
+      .from("academic_terms")
+      .select("name")
+      .eq("is_active", true)
+      .limit(1),
+    supabase.from("institutions").select("name").limit(1),
   ]);
+
+  const termName = terms?.[0]?.name ?? null;
+  const institutionName = institutions?.[0]?.name ?? null;
+  const subtitle =
+    [termName, institutionName].filter(Boolean).join(" — ") ||
+    "Your department overview";
 
   const sectionsArr = sections ?? [];
   const profilesArr = profiles ?? [];
@@ -122,7 +136,7 @@ export default async function HodDashboardPage() {
           className="text-base mt-1.5"
           style={{ color: BRAND.textHeading, opacity: 0.7 }}
         >
-          Fall 2026 &mdash; CS Department, MAJU
+          {subtitle}
         </p>
       </div>
 
@@ -173,6 +187,13 @@ export default async function HodDashboardPage() {
               ? sec.teacher[0]
               : sec.teacher) as SecTeacher | null;
             const sim = simBySec.get(sec.id);
+            const studentCount =
+              (
+                sec.section_students as
+                  | { count: number }[]
+                  | null
+                  | undefined
+              )?.[0]?.count ?? 0;
 
             return (
               <div
@@ -201,7 +222,7 @@ export default async function HodDashboardPage() {
                     className="text-xs flex items-center gap-1.5 mt-1"
                     style={{ color: BRAND.textMuted }}
                   >
-                    <span>Students: {/* count via section_students join */}</span>
+                    <span>Students: {studentCount}</span>
                     <Badge text={sec.state} />
                   </div>
                   <div className="flex gap-1.5 mt-2 flex-wrap">

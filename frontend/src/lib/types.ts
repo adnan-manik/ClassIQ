@@ -47,7 +47,12 @@ export function strengthLabel(score: number): "mild" | "moderate" | "strong" {
 
 // ─── DB row shapes (subset of DATA_MODEL.md) ───────────────────────────────
 
-export type UserRole = "super_admin" | "hod" | "teacher" | "student";
+export type UserRole =
+  | "super_admin"
+  | "institution_admin"
+  | "hod"
+  | "teacher"
+  | "student";
 
 export interface AuthUser {
   id: string;
@@ -173,4 +178,157 @@ export interface PeerRelationship {
   to_student_id: string;
   type: RelationshipType;
   strength: number;
+}
+
+// ─── Admin / Institution-admin API shapes ──────────────────────────────────
+
+export interface AdminInstitution {
+  id: string;
+  name: string;
+  slug: string;
+  created_at: string;
+  department_count: number;
+  user_count: number;
+  student_count: number;
+}
+
+export interface AdminInstitutionDetail extends AdminInstitution {
+  departments: { id: string; name: string; code: string }[];
+}
+
+export interface RoleCount {
+  role: UserRole;
+  count: number;
+}
+
+export interface SystemOverview {
+  institutions: number;
+  users_by_role: RoleCount[];
+  students: number;
+  teachers: number;
+  sections: number;
+  simulations_last_30d: number;
+}
+
+export interface AuditEntry {
+  id: string;
+  institution_id: string;
+  institution_name: string | null;
+  actor_user_id: string | null;
+  actor_email: string | null;
+  action: string;
+  entity_type: string;
+  entity_id: string | null;
+  payload: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface IngestionJobItem {
+  id: string;
+  institution_id: string;
+  institution_name: string | null;
+  source: string;
+  status: "pending" | "running" | "succeeded" | "failed" | "partial";
+  started_at: string | null;
+  finished_at: string | null;
+  summary: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface HodRef {
+  auth_user_id: string;
+  full_name: string;
+  email: string;
+}
+
+export interface DepartmentItem {
+  id: string;
+  name: string;
+  code: string;
+  created_at: string;
+  member_count: number;
+  teacher_count: number;
+  student_count: number;
+  course_count: number;
+  hods: HodRef[];
+}
+
+export interface InstitutionUserListItem {
+  id: string;
+  email: string;
+  full_name: string;
+  role: UserRole;
+  is_active: boolean;
+  created_at: string;
+  department_codes: string[];
+}
+
+export interface UserImportPreviewRow {
+  line: number;
+  email: string;
+  full_name: string;
+  role: string;
+  department_code: string | null;
+  password: string | null;
+}
+
+export interface UserImportPreviewError {
+  line: number;
+  field: string;
+  message: string;
+}
+
+export interface UserImportPreviewResp {
+  total: number;
+  valid: UserImportPreviewRow[];
+  errors: UserImportPreviewError[];
+}
+
+export interface UserImportResult {
+  ingestion_job_id: string;
+  total: number;
+  created: number;
+  failed: number;
+  status: "succeeded" | "failed" | "partial" | "pending" | "running";
+  errors: UserImportPreviewError[];
+}
+
+export interface FslsmAxisCount {
+  axis: FslsmAxis;
+  pole_a_count: number;
+  pole_b_count: number;
+  pole_a_label: string;
+  pole_b_label: string;
+}
+
+export interface FslsmDistributionResp {
+  total_profiles: number;
+  axes: FslsmAxisCount[];
+}
+
+export interface DepartmentRollup {
+  department_id: string;
+  department_name: string;
+  department_code: string;
+  student_count: number;
+  teacher_count: number;
+  section_count: number;
+  avg_compatibility_score: number | null;
+  simulations_run: number;
+}
+
+export interface InstitutionAnalyticsOverview {
+  student_count: number;
+  teacher_count: number;
+  section_count: number;
+  simulation_count: number;
+  avg_compatibility_score: number | null;
+  fslsm: FslsmDistributionResp;
+  departments: DepartmentRollup[];
+}
+
+export interface ScoreTrendPoint {
+  bucket_start: string;
+  avg_score: number;
+  runs: number;
 }

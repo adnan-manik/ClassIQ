@@ -13,6 +13,7 @@ from app.db.session import Base
 
 class UserRole(str, enum.Enum):
     super_admin = "super_admin"
+    institution_admin = "institution_admin"
     hod = "hod"
     teacher = "teacher"
     student = "student"

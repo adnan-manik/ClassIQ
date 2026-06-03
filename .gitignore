@@ -3,6 +3,9 @@
 # Node deps anywhere (subprojects keep their own package.json tracked)
 **/node_modules/
 
+# Next.js build output anywhere (incl. a stray root-level .next from running next at root)
+**/.next/
+
 # Ad-hoc tooling deps in db/ — script-only, not source code
 /db/package.json
 /db/package-lock.json

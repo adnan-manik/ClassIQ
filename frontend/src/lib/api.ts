@@ -58,6 +58,43 @@ export async function simulateSection(
   return res.json() as Promise<SimulateResponse>;
 }
 
+export interface CreateSectionInput {
+  course_id: string;
+  academic_term_id: string;
+  label: string;
+  teacher_id?: string | null;
+  student_ids?: string[];
+}
+
+/** Create a new draft section. Returns the created section's id. */
+export async function createSection(
+  input: CreateSectionInput,
+): Promise<{ id: string }> {
+  const res = await authedFetch(`/api/sections`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    throw new Error(`Create section failed (${res.status}): ${await safeError(res)}`);
+  }
+  return res.json() as Promise<{ id: string }>;
+}
+
+/** Patch a section's label and/or assigned teacher (null teacher = unassign). */
+export async function updateSection(
+  sectionId: string,
+  input: { label?: string; teacher_id?: string | null },
+): Promise<{ id: string }> {
+  const res = await authedFetch(`/api/sections/${sectionId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    throw new Error(`Update section failed (${res.status}): ${await safeError(res)}`);
+  }
+  return res.json() as Promise<{ id: string }>;
+}
+
 async function safeError(res: Response): Promise<string> {
   try {
     const body = await res.json();

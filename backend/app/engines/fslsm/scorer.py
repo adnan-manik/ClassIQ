@@ -60,7 +60,15 @@ class FslsmScore:
     sequential_global: int
 
     def dominant_axis(self) -> FslsmAxis | None:
-        """Axis with greatest |score|. None if there's a tie at the top."""
+        """Axis with the greatest |score|.
+
+        Ties are broken deterministically by canonical FSLSM axis order
+        (active_reflective → sensing_intuitive → visual_verbal →
+        sequential_global) rather than discarded — Python's sort is stable, so
+        the canonically-first axis wins among equal magnitudes. Returns ``None``
+        only when there is no signal at all (every axis is 0, i.e. perfectly
+        balanced), in which case there is no dominant style to report.
+        """
         scores = [
             (FslsmAxis.active_reflective, abs(self.active_reflective)),
             (FslsmAxis.sensing_intuitive, abs(self.sensing_intuitive)),
@@ -68,7 +76,7 @@ class FslsmScore:
             (FslsmAxis.sequential_global, abs(self.sequential_global)),
         ]
         scores.sort(key=lambda x: x[1], reverse=True)
-        if scores[0][1] == scores[1][1]:
+        if scores[0][1] == 0:
             return None
         return scores[0][0]
 

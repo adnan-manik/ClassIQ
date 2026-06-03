@@ -25,24 +25,35 @@ def score(
     g = build_section_graph(student_ids, relationships)
     m = graph_metrics(g)
 
-    if m.n_nodes <= 1:
+    # No usable peer signal (singleton class, no relationships ingested, or
+    # only neutral ties which carry no positive/negative signal) → neutral.
+    # We must NOT penalize a section just because peer data is absent.
+    if m.n_nodes <= 1 or m.n_edges == 0:
+        return SocialResult(score=50, label="neutral")
+    if m.positive_edge_share == 0.0 and m.conflict_density == 0.0:
         return SocialResult(score=50, label="neutral")
 
-    # Component scores in [0, 1]
-    density_norm = min(1.0, m.density * 6.0)            # density of 0.17+ → 1.0
-    clustering_norm = m.avg_clustering                  # already 0..1
-    positive_norm = m.positive_edge_share               # 0..1
-    conflict_pen = m.conflict_density                   # subtract
-    isolation_pen = m.isolated_node_count / m.n_nodes   # subtract
+    # Component scores in [0, 1].
+    # `connectivity` = share of students with at least one meaningful tie.
+    connectivity = 1.0 - (m.isolated_node_count / m.n_nodes)
+    positive = m.positive_edge_share        # share of edges that are friend/study_partner
+    conflict = m.conflict_density           # share of edges that are conflicts
+    clustering = m.avg_clustering           # clustering of the POSITIVE subgraph (0..1)
+    isolation = m.isolated_node_count / m.n_nodes
 
-    raw = (
-        0.40 * density_norm
-        + 0.25 * clustering_norm
-        + 0.20 * positive_norm
-        - 0.35 * conflict_pen
-        - 0.20 * isolation_pen
+    # Start from a neutral baseline of 0.5. Positive ties that actually reach
+    # students (positive_share × connectivity) and tight positive clusters
+    # raise the score; conflict edges and isolated students lower it. Conflict
+    # edges earn NO cohesion credit (they're excluded from `positive` and from
+    # the clustering projection), so a conflict-heavy class scores low.
+    raw01 = (
+        0.50
+        + 0.35 * (positive * connectivity)
+        + 0.15 * clustering
+        - 0.45 * conflict
+        - 0.20 * isolation
     )
-    score_val = max(0, min(100, round((raw + 0.55) * 100)))
+    score_val = max(0, min(100, round(raw01 * 100)))
 
     if score_val >= 70:
         label = "supportive"

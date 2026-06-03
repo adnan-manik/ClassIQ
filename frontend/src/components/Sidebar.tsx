@@ -3,7 +3,9 @@
 import { BRAND } from "@/lib/brand";
 import type { UserRole } from "@/lib/types";
 import {
+  BarChart3,
   BookOpen,
+  Building2,
   FileBarChart,
   FlaskConical,
   GitBranchPlus,
@@ -11,6 +13,8 @@ import {
   LayoutDashboard,
   LogOut,
   Network,
+  Server,
+  ShieldCheck,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -30,14 +34,31 @@ const TEACHER_NAV = [
   { href: "/teacher-dashboard", label: "My Class", icon: BookOpen },
 ] as const;
 
-const ADMIN_NAV = [
-  { href: "/admin", label: "Admin Panel", icon: LayoutDashboard },
+const INSTITUTION_ADMIN_NAV = [
+  { href: "/admin", label: "Overview", icon: LayoutDashboard },
+  { href: "/admin/departments", label: "Departments", icon: GitBranchPlus },
+  { href: "/admin/users", label: "Users", icon: Users },
+  { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/admin/audit", label: "Audit Log", icon: ShieldCheck },
+  { href: "/students", label: "Students", icon: Users },
+  { href: "/teachers", label: "Teachers", icon: GraduationCap },
+  { href: "/sections", label: "Sections", icon: GitBranchPlus },
+  { href: "/reports", label: "Reports", icon: FileBarChart },
+  { href: "/social-graph", label: "Social Graph", icon: Network },
+] as const;
+
+const SUPER_ADMIN_NAV = [
+  { href: "/admin", label: "Overview", icon: LayoutDashboard },
+  { href: "/admin/institutions", label: "Institutions", icon: Building2 },
+  { href: "/admin/system", label: "System Health", icon: Server },
+  { href: "/admin/audit", label: "Audit Log", icon: ShieldCheck },
 ] as const;
 
 function navForRole(role: UserRole) {
   if (role === "hod") return HOD_NAV;
   if (role === "teacher") return TEACHER_NAV;
-  if (role === "super_admin") return ADMIN_NAV;
+  if (role === "institution_admin") return INSTITUTION_ADMIN_NAV;
+  if (role === "super_admin") return SUPER_ADMIN_NAV;
   return [];
 }
 
@@ -51,37 +72,47 @@ export default function Sidebar({
 
   return (
     <aside
-      className="w-56 flex flex-col min-h-screen shrink-0"
+      className="fixed left-0 top-0 w-56 h-screen flex flex-col"
       style={{ backgroundColor: BRAND.sidebar }}
     >
       {/* Brand */}
-      <div className="px-6 py-6">
+      <div className="shrink-0 px-6 py-6">
         <h1 className="text-2xl font-extrabold tracking-tight text-white leading-none">
           ClassIQ
         </h1>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 py-2">
+      <nav
+        className="flex-1 py-2 overflow-y-auto"
+        style={{
+          scrollbarWidth: "none",
+          msOverflowStyle: "none",
+        }}
+      >
+        <style>{`
+          nav::-webkit-scrollbar {
+            display: none;
+          }
+        `}</style>
         {nav.map(({ href, label, icon: Icon }) => {
+          // For `/admin` exact-match so it doesn't stay highlighted on /admin/users etc.
           const active =
-            href === "/" ? pathname === "/" : pathname.startsWith(href);
+            href === "/" || href === "/admin"
+              ? pathname === href
+              : pathname.startsWith(href);
           return (
             <Link
               key={href}
               href={href}
               className="relative flex items-center gap-3 ml-3 py-2.5 my-1 text-sm font-semibold transition-all"
               style={{
-                // Active tab gets a small left indent so the icon+label slide
-                // right together (separating from inactive tabs visually).
                 paddingLeft: active ? 24 : 16,
                 paddingRight: 16,
                 backgroundColor: active ? BRAND.sidebarActiveBg : "transparent",
                 color: active ? BRAND.sidebarActiveText : BRAND.sidebarText,
                 borderTopLeftRadius: 999,
                 borderBottomLeftRadius: 999,
-                // Active tab pokes out past the sidebar edge so it visually
-                // joins the page background (same color → merges seamlessly).
                 marginRight: active ? -2 : 0,
               }}
               onMouseEnter={(e) => {
@@ -102,7 +133,7 @@ export default function Sidebar({
 
       {/* User + signout */}
       <div
-        className="p-3 mx-3 mb-3 rounded-xl"
+        className="shrink-0 p-3 mx-3 mb-3 rounded-xl"
         style={{ backgroundColor: BRAND.sidebarHover }}
       >
         <div

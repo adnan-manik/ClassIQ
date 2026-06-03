@@ -58,7 +58,7 @@ def score(profiles: list[StudentProfile], teacher: TeacherProfile | None) -> int
     If the class has no profiles, return 0 (can't reason).
     """
     if not profiles:
-        return 0
+        return 50  # no scored profiles → neutral (no signal), consistent with other factors
     if teacher is None:
         return 50
 
@@ -77,9 +77,16 @@ def score(profiles: list[StudentProfile], teacher: TeacherProfile | None) -> int
     class_means = {axis: _class_axis_mean(profiles, axis) for axis in FslsmAxis}
 
     # Alignment per axis = affinity × class_mean (rewarded when signs agree).
-    # Range of one term is roughly [-2, +2] (affinity span × class_mean span).
     aligned = sum(affinities[axis] * class_means[axis] for axis in FslsmAxis)
-    # Range overall ≈ [-8, +8] before normalization
-    normalized = (aligned + 8.0) / 16.0  # → [0, 1]
 
+    # Normalize against the maximum |alignment| THIS teacher can achieve (when
+    # class_mean hits ±1 on every axis, aligning with each affinity's sign).
+    # That maps this teacher's best-possible class → 100, worst → 0, and a
+    # perfectly balanced class → 50, giving the factor full resolution instead
+    # of compressing everything toward the midpoint.
+    max_aligned = sum(abs(affinities[axis]) for axis in FslsmAxis)
+    if max_aligned <= 0:
+        return 50  # teacher is neutral on every axis — no alignment signal
+
+    normalized = (aligned / max_aligned + 1.0) / 2.0  # [-1, +1] → [0, 1]
     return max(0, min(100, round(normalized * 100)))

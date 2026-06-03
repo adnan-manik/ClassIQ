@@ -4,16 +4,22 @@ Pulls section + course + teacher + teacher's current profile + the latest
 simulation result (and its factors) in a couple of round-trips.
 """
 
-from uuid import UUID
+from datetime import datetime, timezone
+from uuid import UUID, uuid4
 
-from sqlalchemy import desc, func, select
+from sqlalchemy import desc, func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.institution import Course
-from app.models.section import Section, SectionStudent
+from app.models.institution import AcademicTerm, Course
+from app.models.section import Section, SectionState, SectionStudent
 from app.models.simulation import SimulationResult, SimulationResultFactor
 from app.models.student import Student, StudentAuxProfile, StudentProfile
 from app.models.teacher import Teacher, TeacherProfile
+
+
+class SectionRefError(ValueError):
+    """A referenced course / term / teacher / label is invalid for this tenant."""
 
 
 async def list_sections(
@@ -131,3 +137,165 @@ async def latest_result_for_section(
     )
     factors = list((await db.execute(factors_stmt)).scalars().all())
     return result, factors, recommended
+
+
+# ── Writes ──────────────────────────────────────────────────────────────────
+# The backend bypasses RLS (service connection), so every referenced entity is
+# explicitly re-scoped to the caller's institution to prevent cross-tenant
+# attachment.
+
+
+async def _term_in_institution(
+    db: AsyncSession, term_id: UUID, institution_id: UUID
+) -> bool:
+    stmt = (
+        select(func.count())
+        .select_from(AcademicTerm)
+        .where(AcademicTerm.id == term_id)
+        .where(AcademicTerm.institution_id == institution_id)
+    )
+    return ((await db.execute(stmt)).scalar() or 0) > 0
+
+
+async def _course_in_institution(
+    db: AsyncSession, course_id: UUID, institution_id: UUID
+) -> bool:
+    stmt = (
+        select(func.count())
+        .select_from(Course)
+        .where(Course.id == course_id)
+        .where(Course.institution_id == institution_id)
+        .where(Course.deleted_at.is_(None))
+    )
+    return ((await db.execute(stmt)).scalar() or 0) > 0
+
+
+async def _teacher_in_institution(
+    db: AsyncSession, teacher_id: UUID, institution_id: UUID
+) -> bool:
+    stmt = (
+        select(func.count())
+        .select_from(Teacher)
+        .where(Teacher.id == teacher_id)
+        .where(Teacher.institution_id == institution_id)
+        .where(Teacher.deleted_at.is_(None))
+    )
+    return ((await db.execute(stmt)).scalar() or 0) > 0
+
+
+async def _valid_student_ids(
+    db: AsyncSession, student_ids: list[UUID], institution_id: UUID
+) -> list[UUID]:
+    if not student_ids:
+        return []
+    stmt = (
+        select(Student.id)
+        .where(Student.id.in_(student_ids))
+        .where(Student.institution_id == institution_id)
+        .where(Student.deleted_at.is_(None))
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def create_section(
+    db: AsyncSession,
+    *,
+    institution_id: UUID,
+    created_by: UUID,
+    course_id: UUID,
+    academic_term_id: UUID,
+    label: str,
+    teacher_id: UUID | None,
+    student_ids: list[UUID],
+) -> UUID:
+    """Create a draft section + enrol the given students. Raises SectionRefError
+    on bad references or a duplicate (course, term, label)."""
+    if not await _course_in_institution(db, course_id, institution_id):
+        raise SectionRefError("Course not found in your institution")
+    if not await _term_in_institution(db, academic_term_id, institution_id):
+        raise SectionRefError("Academic term not found in your institution")
+    if teacher_id is not None and not await _teacher_in_institution(
+        db, teacher_id, institution_id
+    ):
+        raise SectionRefError("Teacher not found in your institution")
+
+    valid_students = await _valid_student_ids(db, student_ids, institution_id)
+
+    now = datetime.now(timezone.utc)
+    section_id = uuid4()
+    db.add(
+        Section(
+            id=section_id,
+            institution_id=institution_id,
+            course_id=course_id,
+            academic_term_id=academic_term_id,
+            teacher_id=teacher_id,
+            label=label.strip(),
+            state=SectionState.draft,
+            created_by=created_by,
+            created_at=now,
+        )
+    )
+    for sid in valid_students:
+        db.add(SectionStudent(section_id=section_id, student_id=sid, added_at=now))
+
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise SectionRefError(
+            "A section with this course, term, and label already exists"
+        ) from exc
+    return section_id
+
+
+async def update_section(
+    db: AsyncSession,
+    *,
+    institution_id: UUID,
+    section_id: UUID,
+    set_label: bool,
+    label: str | None,
+    set_teacher: bool,
+    teacher_id: UUID | None,
+) -> bool:
+    """Update label/teacher of a section. Editing a `simulated` section drops it
+    back to `draft` (architecture §7). Returns False if the section isn't found,
+    raises SectionRefError on an invalid teacher or duplicate label."""
+    sec = (
+        await db.execute(
+            select(Section)
+            .where(Section.id == section_id)
+            .where(Section.institution_id == institution_id)
+            .where(Section.deleted_at.is_(None))
+        )
+    ).scalar_one_or_none()
+    if sec is None:
+        return False
+
+    changed = False
+    if set_label and label and label.strip():
+        sec.label = label.strip()
+        changed = True
+    if set_teacher:
+        if teacher_id is not None and not await _teacher_in_institution(
+            db, teacher_id, institution_id
+        ):
+            raise SectionRefError("Teacher not found in your institution")
+        sec.teacher_id = teacher_id
+        changed = True
+
+    if changed:
+        # Re-editing invalidates a prior simulation — back to draft.
+        if sec.state == SectionState.simulated:
+            sec.state = SectionState.draft
+        sec.updated_at = datetime.now(timezone.utc)
+
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise SectionRefError(
+            "A section with this course, term, and label already exists"
+        ) from exc
+    return True

@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: str = "http://localhost:3000"
 
+    # Frontend URL (for email links, invitations, etc.)
+    FRONTEND_URL: str = "http://localhost:3000"
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]

@@ -6,9 +6,9 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.deps import current_user
+from app.deps import require_role
 from app.db.session import get_db
-from app.models.auth_user import AuthUser
+from app.models.auth_user import AuthUser, UserRole
 from app.repositories import students as students_repo
 from app.schemas.students import (
     StudentAuxShape,
@@ -19,10 +19,14 @@ from app.schemas.students import (
 
 router = APIRouter(prefix="/students", tags=["students"])
 
+# Roster views are for staff only — teachers/students must not enumerate the
+# whole institution's students.
+_staff = require_role(UserRole.hod, UserRole.institution_admin, UserRole.super_admin)
+
 
 @router.get("", response_model=list[StudentListItem])
 async def list_students(
-    user: Annotated[AuthUser, Depends(current_user)],
+    user: Annotated[AuthUser, Depends(_staff)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> list[StudentListItem]:
     rows = await students_repo.list_students_with_current_profile(
@@ -45,7 +49,7 @@ async def list_students(
 @router.get("/{student_id}", response_model=StudentDetail)
 async def get_student(
     student_id: UUID,
-    user: Annotated[AuthUser, Depends(current_user)],
+    user: Annotated[AuthUser, Depends(_staff)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> StudentDetail:
     row = await students_repo.get_student_with_current_profile(

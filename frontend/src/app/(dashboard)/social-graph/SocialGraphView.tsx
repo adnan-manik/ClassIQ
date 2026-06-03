@@ -351,7 +351,7 @@ export default function SocialGraphView({ data }: { data: SocialGraphData }) {
                     x2={positions[ti].x}
                     y2={positions[ti].y}
                     stroke={EDGE_COLOR[e.type] ?? BRAND.cardBorder}
-                    strokeWidth={e.strength * 0.9}
+                    strokeWidth={Math.max(1, e.strength) * 0.9}
                     strokeOpacity={opacity}
                     style={{ transition: "stroke-opacity 0.15s" }}
                   />

@@ -13,7 +13,7 @@
 - **Profiles are versioned, not mutated.** Every new survey submission creates a new `student_profile` row; the previous one stays untouched. This is what unlocks S3 longitudinal analytics later.
 - **Scenarios are first-class, separate from real sections.** Hypotheticals never pollute live academic data; "applying" a scenario is an explicit copy operation.
 - **Hard-delete drafts and computables; soft-delete people and academic record.** Anything we can re-derive can be dropped; anything that *is* the data is preserved.
-- **Source-agnostic ingestion.** The schema does not assume a single upstream — the form-app, the PhD pipeline, a bulk RDF import, and a future ClassIQ-owned survey all converge on the same tables.
+- **Source-agnostic ingestion.** The schema does not assume a single upstream — ClassIQ's own form/survey app, a bulk RDF import, and manual admin entry all converge on the same tables.
 
 ---
 
@@ -51,8 +51,7 @@ CREATE TYPE fslsm_pole_b      AS ENUM ('reflective', 'intuitive', 'verbal', 'glo
 CREATE TYPE answer_choice     AS ENUM ('A', 'B');
 CREATE TYPE response_source   AS ENUM (
   'rdf_bulk_import',       -- existing RDF dump
-  'phd_pipeline',          -- live handoff from PhD app
-  'form_app',              -- the upstream form-only app
+  'form_app',              -- ClassIQ's own survey/form app
   'classiq_internal',      -- future ClassIQ-owned survey
   'manual_admin'           -- typed in by an admin
 );
@@ -65,6 +64,10 @@ CREATE TYPE predicted_outcome AS ENUM ('high', 'medium', 'low');
 CREATE TYPE social_impact     AS ENUM ('supportive', 'neutral', 'hindering');
 CREATE TYPE ingestion_status  AS ENUM ('pending', 'running', 'succeeded', 'failed', 'partial');
 ```
+
+> **Changed enums** are not edited in place once the DB is live — Postgres can't drop
+> an enum value. They go through a versioned migration instead. `response_source`
+> dropped its old `phd_pipeline` value (merged into `form_app`) — see §18 Migrations.
 
 ---
 
@@ -287,7 +290,7 @@ CREATE TABLE survey_responses (
   submitted_at         TIMESTAMPTZ NOT NULL,
   source               response_source NOT NULL,
   ingestion_job_id     UUID REFERENCES ingestion_jobs(id),   -- nullable for non-bulk sources
-  external_response_id TEXT,                                  -- form-app or PhD-app's own response ID, for idempotency
+  external_response_id TEXT,                                  -- the source app's own response ID, for idempotency
   created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
   deleted_at           TIMESTAMPTZ,
   UNIQUE (instrument_id, external_response_id)               -- idempotent ingestion
@@ -961,3 +964,26 @@ erDiagram
 
 - **27 tables**, **19 enum types**, ~30 indexes, 5 verification queries.
 - Touches all 8 committed features (F1–F8) and reserves shape for stretch goals (S1–S3) + post-FYP R1–R4 without future migrations.
+
+---
+
+## 18. Migrations
+
+`db/schema.sql` is the authoritative snapshot for a **fresh** database. Once a
+database is live, the schema is **never** edited in place — schema changes go through
+ordered, dated migration files so a deployed Supabase instance can be brought forward
+without a rebuild.
+
+- **Location:** `db/migrations/`
+- **Naming:** `YYYY-MM-DD_short_description.sql` (chronological order).
+- **Rule of thumb:** anything Postgres can't do in place needs a migration. Enum
+  values are the classic case — Postgres has no `ALTER TYPE … DROP VALUE`, so dropping
+  or renaming an enum value means: rename the old type → create the new type →
+  `ALTER COLUMN … TYPE … USING` every dependent column (remapping retired values) →
+  `DROP TYPE` the old one, all in one transaction.
+- **After writing a migration, also update `db/schema.sql`** so the snapshot and the
+  migrated database stay in sync for the next fresh setup.
+
+| Date | File | Change |
+|------|------|--------|
+| 2026-06-03 | `2026-06-03_drop_phd_pipeline_source.sql` | Removed `phd_pipeline` from the `response_source` enum; existing rows remapped to `form_app` (columns: `ingestion_jobs.source`, `survey_responses.source`). |

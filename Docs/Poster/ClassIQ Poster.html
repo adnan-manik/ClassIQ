@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>ClassIQ — FYP Exhibition Poster</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600;700&family=Radio+Canada:wght@500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="poster.css" />
+</head>
+<body>
+<div class="stage">
+<div class="stage__scaler">
+<div class="poster">
+
+  <div class="corner corner--l"></div>
+  <div class="corner corner--r"></div>
+  <div class="corner corner--r2"></div>
+
+  <!-- ============ HEADER ============ -->
+  <header class="head">
+    <div class="crest">
+      <div class="crest__badge"><img src="assets/maju.webp" alt="University crest" /></div>
+      <div class="id-badge"><b>Project ID</b><span>CS/FYP/SP2026/08</span></div>
+    </div>
+
+    <div class="head__center">
+      <div class="brandrow">
+        <svg class="brandmark" viewBox="0 0 120 120" aria-hidden="true">
+          <line x1="30" y1="42" x2="90" y2="42" stroke="#0d9488" stroke-width="9" stroke-linecap="round"/>
+          <line x1="30" y1="42" x2="60" y2="92" stroke="#0d9488" stroke-width="9" stroke-linecap="round"/>
+          <line x1="90" y1="42" x2="60" y2="92" stroke="#0d9488" stroke-width="9" stroke-linecap="round"/>
+          <circle cx="30" cy="42" r="20" fill="#0d9488"/>
+          <circle cx="90" cy="42" r="20" fill="#4a3487"/>
+          <circle cx="60" cy="92" r="20" fill="#f6b73c"/>
+        </svg>
+        <div class="title">Class<em>IQ</em></div>
+      </div>
+      <div class="subtitle">AI-Powered Digital Twin Platform for Classroom Intelligence</div>
+      <div class="tagchips">
+        <span class="tagchip">Digital Twins</span>
+        <span class="tagchip p">Learning Analytics</span>
+        <span class="tagchip">Compatibility Scoring</span>
+        <span class="tagchip a">Social Graph Analysis</span>
+      </div>
+
+      <div class="team">
+        <span class="m">Muniba Muhammad Taufiq <span>(SP23-BSCS-0191)</span></span><span class="sep">|</span><span class="m">Abdur Rehman Khubaib Rehmani <span>(SP23-BSCS-0181)</span></span><span class="sep">|</span><span class="m">Adnan Kamal Manik <span>(SP23-BSCS-0179)</span></span>
+      </div>
+
+      <div class="sup">
+        <div class="sup__k">Supervised by</div>
+        <div class="sup__v">Dr. Syed Imran Jami</div>
+        <div class="sup__r">BS (Computer Science)</div>
+      </div>
+
+      <div class="faculty">FACULTY OF COMPUTING, MUHAMMAD ALI JINNAH UNIVERSITY, KARACHI</div>
+    </div>
+
+    <div class="head__right"></div>
+  </header>
+
+  <div class="divider"></div>
+
+  <!-- ============ BODY ============ -->
+  <div class="body">
+
+    <!-- ============ LEFT COLUMN ============ -->
+    <div class="col">
+
+      <!-- PROBLEM -->
+      <section class="card">
+        <div class="card__label">Problem Statement</div>
+        <p class="lead">Every semester, Heads of Department assign teachers to class sections through a
+          <strong>largely manual, intuition-driven process</strong> — with no structured way to evaluate
+          teacher–student compatibility <span class="hl">before</span> the term begins. The result:</p>
+        <ul class="pain">
+          <li><span class="dot" style="background:var(--rose-500)">!</span><div><b>Style mismatches</b> between how teachers teach and how students prefer to learn, hurting engagement and outcomes.</div></li>
+          <li><span class="dot" style="background:var(--amber-500)">!</span><div>Problems are <b>only discovered weeks into the semester</b>, when it is far too late to course-correct.</div></li>
+          <li><span class="dot" style="background:var(--purple-500)">!</span><div><b>Peer relationships</b> — friendships, conflicts, study partnerships — are never considered during section planning, despite strongly shaping classroom dynamics.</div></li>
+        </ul>
+        <div class="diff">
+          <div class="k">The gap</div>
+          <p>Tools like Canvas, Blackboard and Google Classroom only track what <b>happened</b>. No platform predicts what is <b>likely to happen</b> before a semester even starts.</p>
+        </div>
+      </section>
+
+      <!-- APPROACH / SOLUTION -->
+      <section class="card teal">
+        <div class="card__label">Our Approach</div>
+        <p class="lead"><strong>ClassIQ</strong> builds <span class="hl">digital twins</span> of every student and teacher —
+          structured behavioral profiles from psychological survey data — and <strong>simulates how a proposed
+          classroom would perform before the semester begins.</strong> It is a <strong>decision-support tool</strong>,
+          not a guarantee engine: HoDs test configurations, compare predicted outcomes side-by-side, and assign with evidence.</p>
+
+        <div class="pillars">
+          <div class="pillar">
+            <div class="pk"><i style="background:var(--teal-500)"></i>Digital Twins</div>
+            <p>Students &amp; teachers replicated as data profiles to test scenarios safely.</p>
+          </div>
+          <div class="pillar">
+            <div class="pk"><i style="background:var(--purple-500)"></i>Learning Analytics</div>
+            <p>Felder–Silverman learning-style profiling across four simple axes.</p>
+          </div>
+          <div class="pillar">
+            <div class="pk"><i style="background:var(--amber-500)"></i>Social Network Analysis</div>
+            <p>Peer ties modeled as a weighted graph — cohesion, conflict, isolation.</p>
+          </div>
+          <div class="pillar">
+            <div class="pk"><i style="background:var(--sky-500)"></i>Agent-Based Simulation</div>
+            <p>What-if section configurations scored &amp; compared before they go live.</p>
+          </div>
+        </div>
+
+        <div class="diff" style="background:linear-gradient(120deg,var(--purple-500),#3a2769)">
+          <div class="k" style="color:#cdb8ff">Key differentiator</div>
+          <p>The first platform to combine <b>learning-style profiling</b>, <b>peer social-graph analysis</b>, and <b>what-if simulation</b> for pre-semester classroom configuration.</p>
+        </div>
+      </section>
+
+      <!-- METHODOLOGY -->
+      <section class="card purple">
+        <div class="card__label">How It Works</div>
+        <p class="lead">ClassIQ serves <strong>three roles</strong>, each with a clear set of actions — from
+          institution setup to the final, evidence-based section assignment.</p>
+
+        <div class="scorecap" style="margin-top:24px">Who does what <span>— actors &amp; their key actions</span></div>
+        <div class="usecase">
+          <div class="ucrow hod">
+            <div class="actor">
+              <svg viewBox="0 0 60 96" aria-hidden="true"><circle cx="30" cy="15" r="13" fill="currentColor"/><path d="M30 30 V60 M30 38 L11 50 M30 38 L49 50 M30 60 L13 92 M30 60 L47 92" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round"/></svg>
+              <div class="role">HoD</div><div class="rdesc">Head of Department</div>
+            </div>
+            <div class="acts">
+              <div class="act"><i></i>Build &amp; configure sections</div>
+              <div class="act"><i></i>Assign teachers</div>
+              <div class="act"><i></i>Run simulation</div>
+              <div class="act"><i></i>Compare what-if scenarios</div>
+              <div class="act"><i></i>View reports &amp; social graph</div>
+            </div>
+          </div>
+          <div class="ucrow teacher">
+            <div class="actor">
+              <svg viewBox="0 0 60 96" aria-hidden="true"><circle cx="30" cy="15" r="13" fill="currentColor"/><path d="M30 30 V60 M30 38 L11 50 M30 38 L49 50 M30 60 L13 92 M30 60 L47 92" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round"/></svg>
+              <div class="role">Teacher</div><div class="rdesc">Read-only</div>
+            </div>
+            <div class="acts">
+              <div class="act"><i></i>View class learning profile</div>
+              <div class="act"><i></i>See content recommendations</div>
+            </div>
+          </div>
+          <div class="ucrow admin">
+            <div class="actor">
+              <svg viewBox="0 0 60 96" aria-hidden="true"><circle cx="30" cy="15" r="13" fill="currentColor"/><path d="M30 30 V60 M30 38 L11 50 M30 38 L49 50 M30 60 L13 92 M30 60 L47 92" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round"/></svg>
+              <div class="role">Admin</div><div class="rdesc">Institution setup</div>
+            </div>
+            <div class="acts">
+              <div class="act"><i></i>Import users (CSV)</div>
+              <div class="act"><i></i>Manage departments</div>
+              <div class="act"><i></i>Assign HoDs</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="scorecap" style="margin-top:30px">How a section is scored <span>— a weighted blend of four factors (0–100)</span></div>
+        <div class="engine">
+          <div class="engine__hd"><div class="t">Compatibility Engine</div><div class="s">weighted mean → score 0–100</div></div>
+          <div class="engine__body">
+            <div class="factor"><div class="fn">Style alignment</div><div class="bar"><i style="width:100%;background:var(--teal-500)"></i></div><div class="fw">0.40</div></div>
+            <div class="factor"><div class="fn">Social cohesion</div><div class="bar"><i style="width:62.5%;background:var(--purple-500)"></i></div><div class="fw">0.25</div></div>
+            <div class="factor"><div class="fn">Class balance</div><div class="bar"><i style="width:50%;background:var(--amber-500)"></i></div><div class="fw">0.20</div></div>
+            <div class="factor"><div class="fn">Participation mix</div><div class="bar"><i style="width:37.5%;background:var(--sky-500)"></i></div><div class="fw">0.15</div></div>
+          </div>
+        </div>
+
+        <div class="shot__cap">Peer Social Graph <span class="sub">— who works well together, and who clashes</span></div>
+        <div class="graphwrap">
+          <svg width="430" height="347" viewBox="0 0 520 420" aria-hidden="true">
+            <g stroke-linecap="round">
+              <line x1="120" y1="110" x2="240" y2="70"  stroke="#0d9488" stroke-width="7"/>
+              <line x1="240" y1="70"  x2="360" y2="120" stroke="#0d9488" stroke-width="7"/>
+              <line x1="120" y1="110" x2="180" y2="230" stroke="#4a3487" stroke-width="6"/>
+              <line x1="240" y1="70"  x2="290" y2="200" stroke="#0d9488" stroke-width="8"/>
+              <line x1="360" y1="120" x2="430" y2="230" stroke="#4a3487" stroke-width="6"/>
+              <line x1="180" y1="230" x2="290" y2="200" stroke="#0d9488" stroke-width="7"/>
+              <line x1="290" y1="200" x2="430" y2="230" stroke="#0d9488" stroke-width="6"/>
+              <line x1="180" y1="230" x2="150" y2="350" stroke="#0d9488" stroke-width="7"/>
+              <line x1="290" y1="200" x2="320" y2="340" stroke="#4a3487" stroke-width="6"/>
+              <line x1="430" y1="230" x2="320" y2="340" stroke="#0d9488" stroke-width="7"/>
+              <line x1="150" y1="350" x2="320" y2="340" stroke="#d9514c" stroke-width="6" stroke-dasharray="4 10"/>
+              <line x1="360" y1="120" x2="290" y2="200" stroke="#0d9488" stroke-width="6"/>
+            </g>
+            <g>
+              <circle cx="120" cy="110" r="26" fill="#0d9488"/>
+              <circle cx="240" cy="70"  r="32" fill="#0d9488"/>
+              <circle cx="360" cy="120" r="24" fill="#4a3487"/>
+              <circle cx="180" cy="230" r="28" fill="#4a3487"/>
+              <circle cx="290" cy="200" r="36" fill="#f6b73c"/>
+              <circle cx="430" cy="230" r="24" fill="#0d9488"/>
+              <circle cx="150" cy="350" r="26" fill="#0d9488"/>
+              <circle cx="320" cy="340" r="28" fill="#4a3487"/>
+            </g>
+          </svg>
+          <div class="legend">
+            <div class="li"><i style="background:#0d9488"></i>Friend tie (weight 1.0)</div>
+            <div class="li"><i style="background:#4a3487"></i>Study partner (1.2)</div>
+            <div class="li"><i style="background:#d9514c"></i>Conflict (−1.0)</div>
+            <div class="li"><span class="nd" style="background:#f6b73c"></span>Hub · high centrality</div>
+            <div class="li"><span class="nd" style="background:#0d9488"></span>Connected student</div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- ============ RIGHT COLUMN ============ -->
+    <div class="col">
+
+      <!-- RESULTS -->
+      <section class="card teal">
+        <div class="card__label">Results — Working Platform</div>
+        <p class="lead">A functioning multi-tenant build: <strong>core engine and all dashboards are implemented</strong>
+          (Next.js 16 · React 19 · FastAPI · Supabase · NetworkX). Live screens from the prototype:</p>
+
+        <!-- Screen 1: HoD Dashboard -->
+        <div class="shot__cap"><span class="n">1</span>HoD Dashboard <span class="sub">— pre-semester planning overview</span></div>
+        <div class="shot">
+          <div class="app">
+            <aside class="app__side">
+              <div class="app__brand"><i>C</i>ClassIQ</div>
+              <div class="app__navhd">Workspace</div>
+              <div class="app__nav on"><span class="ic"></span>Dashboard</div>
+              <div class="app__nav"><span class="ic"></span>Section Builder</div>
+              <div class="app__nav"><span class="ic"></span>What-If Scenarios</div>
+              <div class="app__nav"><span class="ic"></span>Simulation Reports</div>
+              <div class="app__nav"><span class="ic"></span>Social Graph</div>
+            </aside>
+            <div class="app__main">
+              <div class="app__top">
+                <div><div class="app__h">Pre-semester planning · Fall 2026</div><div class="app__sub">6 sections in flight · 4 simulated · 1 draft awaiting review</div></div>
+                <div class="who">Muniba Taufiq<span>HoD · Computer Science</span></div>
+              </div>
+              <div class="tiles">
+                <div class="tile t1"><div class="tk">Students profiled</div><div class="tv">80 <em>+4</em></div></div>
+                <div class="tile t2"><div class="tk">Teaching profiles</div><div class="tv">6</div></div>
+                <div class="tile t3"><div class="tk">Sections</div><div class="tv">6</div></div>
+                <div class="tile t4"><div class="tk">Avg. score</div><div class="tv">78</div></div>
+              </div>
+              <div class="tbl">
+                <div class="tbl__hd"><div>Section</div><div>Teacher</div><div>Students</div><div>Score</div><div>Outcome</div><div>Status</div></div>
+                <div class="tbl__row">
+                  <div>CS-401 · Sec A</div>
+                  <div class="avatarrow"><span class="av" style="background:#0d9488">SJ</span><span class="mut">S. Imran Jami</span></div>
+                  <div>32</div>
+                  <div class="scorebar"><span class="b"><i style="width:87%"></i></span><span class="v">87</span></div>
+                  <div><span class="pill high">↑ High</span></div>
+                  <div><span class="pill active">Active</span></div>
+                </div>
+                <div class="tbl__row">
+                  <div>CS-401 · Sec B</div>
+                  <div class="avatarrow"><span class="av" style="background:#d9514c">NH</span><span class="mut">N. Hassan</span></div>
+                  <div>28</div>
+                  <div class="scorebar"><span class="b"><i style="width:74%"></i></span><span class="v">74</span></div>
+                  <div><span class="pill med">→ Medium</span></div>
+                  <div><span class="pill active">Active</span></div>
+                </div>
+                <div class="tbl__row">
+                  <div>CS-302 · Sec A</div>
+                  <div class="avatarrow"><span class="av" style="background:#4a3487">MK</span><span class="mut">M. Khan</span></div>
+                  <div>28</div>
+                  <div class="scorebar"><span class="b"><i style="width:81%"></i></span><span class="v">81</span></div>
+                  <div><span class="pill high">↑ High</span></div>
+                  <div><span class="pill sim">Simulated</span></div>
+                </div>
+                <div class="tbl__row">
+                  <div>CS-501 · Sec A</div>
+                  <div class="avatarrow"><span class="av" style="background:#4a90e2">OF</span><span class="mut">O. Farooqi</span></div>
+                  <div>22</div>
+                  <div class="scorebar"><span class="b"><i style="width:68%"></i></span><span class="v">68</span></div>
+                  <div><span class="pill med">→ Medium</span></div>
+                  <div><span class="pill sim">Simulated</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Screen 2: What-If Scenario comparison -->
+        <div class="shot__cap"><span class="n">2</span>What-If Scenarios <span class="sub">— compare configurations side-by-side</span></div>
+        <div class="shot" style="padding:36px; background:var(--canvas)">
+          <div class="cmp">
+            <div class="scn win">
+              <div class="scn__tag">Scenario A · winner</div>
+              <div class="scn__name">Original assignment</div>
+              <div class="scn__who">Dr. Syed Imran Jami · Active-Sensing-Visual</div>
+              <div class="grade"><span class="num">87</span><span class="of">/ 100 · High</span></div>
+              <div class="fbars">
+                <div class="fbar"><span class="l">Style alignment</span><span class="t"><i style="width:91%;background:var(--teal-500)"></i></span><span class="n">91</span></div>
+                <div class="fbar"><span class="l">Social cohesion</span><span class="t"><i style="width:78%;background:var(--purple-500)"></i></span><span class="n">78</span></div>
+                <div class="fbar"><span class="l">Class balance</span><span class="t"><i style="width:88%;background:var(--amber-500)"></i></span><span class="n">88</span></div>
+                <div class="fbar"><span class="l">Participation</span><span class="t"><i style="width:82%;background:var(--sky-500)"></i></span><span class="n">82</span></div>
+              </div>
+              <div class="scn__note">Strong style alignment with the cohort's dominant visual learners.</div>
+            </div>
+            <div class="scn">
+              <div class="scn__tag">Scenario B</div>
+              <div class="scn__name">Swap with Prof. Hassan</div>
+              <div class="scn__who">Prof. Nadia Hassan · Active-Visual-Sequential</div>
+              <div class="grade med"><span class="num">73</span><span class="of">/ 100 · Medium</span></div>
+              <div class="fbars">
+                <div class="fbar"><span class="l">Style alignment</span><span class="t"><i style="width:76%;background:var(--teal-500)"></i></span><span class="n">76</span></div>
+                <div class="fbar"><span class="l">Social cohesion</span><span class="t"><i style="width:78%;background:var(--purple-500)"></i></span><span class="n">78</span></div>
+                <div class="fbar"><span class="l">Class balance</span><span class="t"><i style="width:65%;background:var(--amber-500)"></i></span><span class="n">65</span></div>
+                <div class="fbar"><span class="l">Participation</span><span class="t"><i style="width:70%;background:var(--sky-500)"></i></span><span class="n">70</span></div>
+              </div>
+              <div class="scn__note">Brisk pacing may strain the section's reflective learners.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Screen 3: Simulation Report -->
+        <div class="shot__cap"><span class="n">3</span>Simulation Report <span class="sub">— explainable, exportable output</span></div>
+        <div class="shot">
+          <div class="rep">
+            <div class="rep__big">
+              <div class="ring"><i><b>87</b><span>SCORE</span></i></div>
+              <div class="meta">
+                <div class="k">CS-401 · Section A — Predicted outcome</div>
+                <div class="v">High compatibility</div>
+                <div class="o">✓ Recommended teacher: Dr. Syed Imran Jami</div>
+              </div>
+            </div>
+            <div class="repcard">
+              <div class="rk">FSLSM distribution</div>
+              <div class="fslsm">
+                <div class="axis"><div class="axis__top"><span>Active 62%</span><span>Reflective 38%</span></div><div class="axis__bar"><i style="width:62%"></i><i style="width:38%"></i></div></div>
+                <div class="axis"><div class="axis__top"><span>Sensing 55%</span><span>Intuitive 45%</span></div><div class="axis__bar"><i style="width:55%"></i><i style="width:45%"></i></div></div>
+                <div class="axis"><div class="axis__top"><span>Visual 71%</span><span>Verbal 29%</span></div><div class="axis__bar"><i style="width:71%"></i><i style="width:29%"></i></div></div>
+                <div class="axis"><div class="axis__top"><span>Sequential 58%</span><span>Global 42%</span></div><div class="axis__bar"><i style="width:58%"></i><i style="width:42%"></i></div></div>
+              </div>
+            </div>
+            <div class="repcard">
+              <div class="rk">Social graph impact &nbsp;<span class="pill high" style="font-size:22px;padding:8px 18px">Supportive cohort</span></div>
+              <div class="fslsm">
+                <div class="axis"><div class="axis__top"><span>Positive ties</span><span>Strong</span></div><div class="axis__bar"><i style="width:80%"></i><i style="width:20%"></i></div></div>
+                <div class="axis"><div class="axis__top"><span>Conflict density</span><span>Low</span></div><div class="axis__bar"><i style="width:14%;background:var(--rose-500)"></i><i style="width:86%;background:var(--ink-200);opacity:1"></i></div></div>
+                <div class="axis"><div class="axis__top"><span>Isolated students</span><span>2 of 32</span></div><div class="axis__bar"><i style="width:6%;background:var(--amber-500)"></i><i style="width:94%;background:var(--ink-200);opacity:1"></i></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CONCLUSION -->
+      <section class="card">
+        <div class="card__label">Conclusion</div>
+        <p class="concl">ClassIQ turns semester planning from intuition into <strong>evidence</strong>. By building
+          digital twins from psychological survey data, modeling peer relationships as a social graph, and scoring
+          proposed sections through a transparent four-factor engine, it lets HoDs <strong>see how a classroom will
+          perform before it exists</strong> — and choose the configuration most likely to succeed. The core engine,
+          social-graph analysis, section builder, scenario comparison and reporting are already <strong>built and
+          working</strong>, ahead of the original FYP schedule.</p>
+
+        <div class="metrics">
+          <div class="metric"><b>4</b><span>FSLSM axes scored −11…+11</span></div>
+          <div class="metric"><b>4</b><span>weighted compatibility factors</span></div>
+          <div class="metric"><b>100</b><span>point compatibility score (0–100)</span></div>
+          <div class="metric"><b>8 / 8</b><span>committed features delivered</span></div>
+        </div>
+
+        <div class="tech">
+          <b>Next.js 16</b><b>React 19</b><b>Tailwind 4</b><b>FastAPI</b><b>SQLAlchemy 2</b>
+          <b>Supabase · RLS</b><b>NetworkX 3.4</b><b>Recharts</b><b>Multi-tenant</b>
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="foot">
+    <h2>OPEN DAY FINAL YEAR <span class="g">PROJECT</span> EXHIBITION <span class="t">2026</span></h2>
+  </footer>
+
+</div>
+</div>
+</div>
+
+<script>
+  // Fit the fixed 3168×4608 poster into the viewport (screen preview only).
+  (function () {
+    var POSTER_W = 3168, POSTER_H = 4608;
+    var scaler = document.querySelector('.stage__scaler');
+    var stage  = document.querySelector('.stage');
+    function fit() {
+      if (window.matchMedia && window.matchMedia('print').matches) { scaler.style.transform = 'none'; return; }
+      var availW = stage.clientWidth;
+      var s = availW / POSTER_W;
+      scaler.style.transform = 'scale(' + s + ')';
+      scaler.style.width = POSTER_W + 'px';
+      scaler.style.height = (POSTER_H * s) + 'px';
+    }
+    window.addEventListener('resize', fit);
+    window.addEventListener('load', fit);
+    fit();
+  })();
+</script>
+</body>
+</html>

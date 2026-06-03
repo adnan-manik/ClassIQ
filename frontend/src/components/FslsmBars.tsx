@@ -24,9 +24,10 @@ const AXIS_KEYS: { axis: FslsmAxis; field: ScoreField }[] = [
 
 /**
  * Render the 4 FSLSM axes as bipolar bars.
- * Score is odd integer −11..+11. Negative = pole A, Positive = pole B.
- * (Per Felder ILS convention: A-count minus B-count, so positive numbers
- *  actually mean pole A. We flip the visual axis so pole A reads left.)
+ * Score is an odd integer in −11..+11. Per the Felder ILS convention the
+ * backend scorer computes (A-count − B-count), so a POSITIVE score means
+ * pole A (active / sensing / visual / sequential) and a NEGATIVE score means
+ * pole B. Pole A is rendered on the left, matching the backend sign.
  */
 export default function FslsmBars({
   active_reflective_score,

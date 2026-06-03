@@ -1,10 +1,26 @@
-import SignOutButton from "@/components/SignOutButton";
+import StatCard from "@/components/StatCard";
+import { BRAND } from "@/lib/brand";
+import { ApiError, serverFetch } from "@/lib/api.server";
 import { createClient } from "@/lib/supabase/server";
+import type {
+  AdminInstitution,
+  InstitutionAnalyticsOverview,
+  SystemOverview,
+  UserRole,
+} from "@/lib/types";
+import {
+  AlertTriangle,
+  Building2,
+  GitBranchPlus,
+  GraduationCap,
+  LayoutDashboard,
+  TrendingUp,
+  Users,
+} from "lucide-react";
 import { redirect } from "next/navigation";
 
-export default async function AdminDashboardPage() {
+export default async function AdminOverviewPage() {
   const supabase = await createClient();
-
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -16,71 +32,305 @@ export default async function AdminDashboardPage() {
     .eq("id", user.id)
     .single();
 
+  if (!profile) redirect("/login");
+  const role = profile.role as UserRole;
+
+  if (role === "super_admin") {
+    return <SuperAdminOverview />;
+  }
+  if (role === "institution_admin") {
+    return <InstitutionAdminOverview institutionName={profile.full_name} />;
+  }
+  redirect("/");
+}
+
+// ─── Super Admin overview ───────────────────────────────────────────────────
+
+async function SuperAdminOverview() {
+  let overview: SystemOverview | null = null;
+  let institutions: AdminInstitution[] = [];
+  let error: string | null = null;
+  try {
+    [overview, institutions] = await Promise.all([
+      serverFetch<SystemOverview>("/api/admin/system/overview"),
+      serverFetch<AdminInstitution[]>("/api/admin/institutions"),
+    ]);
+  } catch (err) {
+    error = err instanceof ApiError ? err.message : "Failed to load";
+  }
+
   return (
-    <main
-      className="min-h-screen px-8 py-10"
-      style={{ backgroundColor: "var(--brand-mint)" }}
-    >
-      <div className="max-w-5xl mx-auto">
-        <header className="flex items-center justify-between mb-10">
-          <div className="flex items-center gap-2.5">
-            <div
-              className="w-9 h-9 rounded-xl grid place-items-center"
-              style={{ backgroundColor: "var(--brand-teal)" }}
-            >
-              <span className="text-white text-lg font-extrabold">C</span>
-            </div>
-            <span
-              className="text-xl font-bold tracking-tight"
-              style={{ color: "var(--brand-purple)" }}
-            >
-              ClassIQ
-            </span>
-          </div>
-          <SignOutButton />
-        </header>
-
-        <div
-          className="bg-white rounded-3xl p-8 md:p-10 shadow-sm"
-          style={{ border: "2px solid var(--brand-purple)" }}
+    <div className="p-8 max-w-7xl mx-auto space-y-8">
+      <div>
+        <h1
+          className="text-4xl font-extrabold tracking-tight"
+          style={{ color: BRAND.textHeading }}
         >
-          <span
-            className="inline-block px-3 py-1 rounded-full text-xs font-semibold mb-4"
-            style={{
-              backgroundColor: "var(--brand-purple)",
-              color: "white",
-            }}
-          >
-            Super Admin
-          </span>
-          <h1 className="text-3xl font-bold mb-2">
-            Welcome, {profile?.full_name ?? user.email}
-          </h1>
-          <p className="text-slate-500 mb-6">
-            Signed in as <code className="font-mono text-sm">{user.email}</code>
-            {" · "}role <strong>{profile?.role ?? "(unknown)"}</strong>
-          </p>
-
-          <div className="border-t pt-6 mt-6 space-y-3 text-sm text-slate-600">
-            <p className="font-semibold text-slate-700">
-              This is a placeholder. The Super Admin panel will include:
-            </p>
-            <ul className="list-disc list-inside space-y-1 ml-2">
-              <li>Institution onboarding (F8 multi-tenant management)</li>
-              <li>Invite users (HoDs and teachers) into institutions</li>
-              <li>Cross-institution audit log review</li>
-              <li>Platform-wide ingestion job monitoring</li>
-              <li>Scoring config management (default weights)</li>
-            </ul>
-            <p className="text-xs text-slate-400 pt-2">
-              Super Admin can act across all tenants — RLS is bypassed for this
-              role via <code className="font-mono">super_admin_all</code>{" "}
-              policies. See <code className="font-mono">db/schema.sql</code>{" "}
-              §Part 6.
-            </p>
-          </div>
-        </div>
+          Super Admin
+        </h1>
+        <p
+          className="text-base mt-1.5"
+          style={{ color: BRAND.textHeading, opacity: 0.7 }}
+        >
+          Platform-wide view across all institutions.
+        </p>
       </div>
-    </main>
+
+      {error && <ApiErrorBanner message={error} />}
+
+      {overview && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard
+            label="Institutions"
+            value={overview.institutions}
+            icon={Building2}
+            accent={BRAND.teal}
+          />
+          <StatCard
+            label="Students"
+            value={overview.students}
+            icon={Users}
+            accent={BRAND.coral}
+          />
+          <StatCard
+            label="Teachers"
+            value={overview.teachers}
+            icon={GraduationCap}
+            accent={BRAND.indigo}
+          />
+          <StatCard
+            label="Sims (30d)"
+            value={overview.simulations_last_30d}
+            icon={TrendingUp}
+            accent={BRAND.amber}
+          />
+        </div>
+      )}
+
+      <div
+        className="rounded-3xl bg-white p-6"
+        style={{ border: `1px solid ${BRAND.cardBorder}` }}
+      >
+        <h2
+          className="text-xl font-extrabold tracking-tight mb-4"
+          style={{ color: BRAND.textHeading }}
+        >
+          Institutions ({institutions.length})
+        </h2>
+        {institutions.length === 0 ? (
+          <p
+            className="text-sm italic"
+            style={{ color: BRAND.textMuted }}
+          >
+            No institutions yet. Use the Institutions page to onboard the first one.
+          </p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead style={{ backgroundColor: BRAND.subtleBg }}>
+              <tr>
+                <th className="text-left px-4 py-2" style={{ color: BRAND.textMuted }}>
+                  Name
+                </th>
+                <th className="text-left px-4 py-2" style={{ color: BRAND.textMuted }}>
+                  Slug
+                </th>
+                <th className="text-right px-4 py-2" style={{ color: BRAND.textMuted }}>
+                  Depts
+                </th>
+                <th className="text-right px-4 py-2" style={{ color: BRAND.textMuted }}>
+                  Users
+                </th>
+                <th className="text-right px-4 py-2" style={{ color: BRAND.textMuted }}>
+                  Students
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {institutions.map((inst) => (
+                <tr
+                  key={inst.id}
+                  style={{ borderTop: `1px solid ${BRAND.cardBorder}33` }}
+                >
+                  <td className="px-4 py-2.5 font-medium" style={{ color: BRAND.text }}>
+                    {inst.name}
+                  </td>
+                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: BRAND.textMuted }}>
+                    {inst.slug}
+                  </td>
+                  <td className="px-4 py-2.5 text-right" style={{ color: BRAND.text }}>
+                    {inst.department_count}
+                  </td>
+                  <td className="px-4 py-2.5 text-right" style={{ color: BRAND.text }}>
+                    {inst.user_count}
+                  </td>
+                  <td className="px-4 py-2.5 text-right" style={{ color: BRAND.text }}>
+                    {inst.student_count}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Institution Admin overview ─────────────────────────────────────────────
+
+async function InstitutionAdminOverview({
+  institutionName,
+}: {
+  institutionName: string;
+}) {
+  let overview: InstitutionAnalyticsOverview | null = null;
+  let error: string | null = null;
+  try {
+    overview = await serverFetch<InstitutionAnalyticsOverview>(
+      "/api/institution/analytics/overview",
+    );
+  } catch (err) {
+    error = err instanceof ApiError ? err.message : "Failed to load";
+  }
+
+  return (
+    <div className="p-8 max-w-7xl mx-auto space-y-8">
+      <div>
+        <h1
+          className="text-4xl font-extrabold tracking-tight"
+          style={{ color: BRAND.textHeading }}
+        >
+          Institution Admin
+        </h1>
+        <p
+          className="text-base mt-1.5"
+          style={{ color: BRAND.textHeading, opacity: 0.7 }}
+        >
+          Welcome, {institutionName}.
+        </p>
+      </div>
+
+      {error && <ApiErrorBanner message={error} />}
+
+      {overview && (
+        <>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <StatCard
+              label="Students"
+              value={overview.student_count}
+              icon={Users}
+              accent={BRAND.coral}
+            />
+            <StatCard
+              label="Teachers"
+              value={overview.teacher_count}
+              icon={GraduationCap}
+              accent={BRAND.teal}
+            />
+            <StatCard
+              label="Sections"
+              value={overview.section_count}
+              icon={GitBranchPlus}
+              accent={BRAND.purple}
+            />
+            <StatCard
+              label="Avg Score"
+              value={
+                overview.avg_compatibility_score != null
+                  ? Math.round(overview.avg_compatibility_score)
+                  : "—"
+              }
+              icon={TrendingUp}
+              accent={BRAND.amber}
+            />
+          </div>
+
+          <div
+            className="rounded-3xl bg-white p-6"
+            style={{ border: `1px solid ${BRAND.cardBorder}` }}
+          >
+            <h2
+              className="text-xl font-extrabold tracking-tight mb-4"
+              style={{ color: BRAND.textHeading }}
+            >
+              Department Rollup
+            </h2>
+            {overview.departments.length === 0 ? (
+              <p className="text-sm italic" style={{ color: BRAND.textMuted }}>
+                No departments yet. Create one under Departments.
+              </p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead style={{ backgroundColor: BRAND.subtleBg }}>
+                  <tr>
+                    <th className="text-left px-4 py-2" style={{ color: BRAND.textMuted }}>
+                      Department
+                    </th>
+                    <th className="text-right px-4 py-2" style={{ color: BRAND.textMuted }}>
+                      Students
+                    </th>
+                    <th className="text-right px-4 py-2" style={{ color: BRAND.textMuted }}>
+                      Teachers
+                    </th>
+                    <th className="text-right px-4 py-2" style={{ color: BRAND.textMuted }}>
+                      Sections
+                    </th>
+                    <th className="text-right px-4 py-2" style={{ color: BRAND.textMuted }}>
+                      Avg score
+                    </th>
+                    <th className="text-right px-4 py-2" style={{ color: BRAND.textMuted }}>
+                      Sims
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {overview.departments.map((d) => (
+                    <tr
+                      key={d.department_id}
+                      style={{ borderTop: `1px solid ${BRAND.cardBorder}33` }}
+                    >
+                      <td className="px-4 py-2.5 font-medium" style={{ color: BRAND.text }}>
+                        <span className="font-mono text-xs mr-2" style={{ color: BRAND.textMuted }}>
+                          {d.department_code}
+                        </span>
+                        {d.department_name}
+                      </td>
+                      <td className="px-4 py-2.5 text-right">{d.student_count}</td>
+                      <td className="px-4 py-2.5 text-right">{d.teacher_count}</td>
+                      <td className="px-4 py-2.5 text-right">{d.section_count}</td>
+                      <td className="px-4 py-2.5 text-right">
+                        {d.avg_compatibility_score != null
+                          ? Math.round(d.avg_compatibility_score)
+                          : "—"}
+                      </td>
+                      <td className="px-4 py-2.5 text-right">{d.simulations_run}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ApiErrorBanner({ message }: { message: string }) {
+  return (
+    <div
+      className="rounded-xl p-4 flex items-start gap-3"
+      style={{
+        backgroundColor: "#FEE2E2",
+        color: "#991B1B",
+        border: "1px solid #FECACA",
+      }}
+    >
+      <AlertTriangle size={20} className="shrink-0 mt-0.5" />
+      <div className="text-sm">
+        <div className="font-semibold mb-0.5">Couldn&apos;t load data</div>
+        <div className="font-mono text-xs opacity-90">{message}</div>
+      </div>
+    </div>
   );
 }

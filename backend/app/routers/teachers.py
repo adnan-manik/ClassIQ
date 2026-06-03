@@ -7,17 +7,20 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.deps import current_user
-from app.models.auth_user import AuthUser
+from app.deps import require_role
+from app.models.auth_user import AuthUser, UserRole
 from app.repositories import teachers as teachers_repo
 from app.schemas.teachers import TeacherDetail, TeacherListItem, TeacherProfileShape
 
 router = APIRouter(prefix="/teachers", tags=["teachers"])
 
+# Roster views are staff-only.
+_staff = require_role(UserRole.hod, UserRole.institution_admin, UserRole.super_admin)
+
 
 @router.get("", response_model=list[TeacherListItem])
 async def list_teachers(
-    user: Annotated[AuthUser, Depends(current_user)],
+    user: Annotated[AuthUser, Depends(_staff)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> list[TeacherListItem]:
     rows = await teachers_repo.list_teachers_with_current_profile(
@@ -37,7 +40,7 @@ async def list_teachers(
 @router.get("/{teacher_id}", response_model=TeacherDetail)
 async def get_teacher(
     teacher_id: UUID,
-    user: Annotated[AuthUser, Depends(current_user)],
+    user: Annotated[AuthUser, Depends(_staff)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> TeacherDetail:
     row = await teachers_repo.get_teacher_with_current_profile(

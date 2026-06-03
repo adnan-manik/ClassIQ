@@ -29,8 +29,8 @@ def score(profiles: list[StudentProfile]) -> int:
     for c in counts.values():
         if c == 0:
             continue
-        p = c / classified
-        h -= p * math.log(p)
+        prob = c / classified
+        h -= prob * math.log(prob)
     max_h = math.log(4)
     normalized = h / max_h if max_h > 0 else 0.0
 

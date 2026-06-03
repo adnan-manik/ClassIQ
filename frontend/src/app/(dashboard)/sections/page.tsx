@@ -1,18 +1,23 @@
-import EmptyState from "@/components/EmptyState";
 import { BRAND } from "@/lib/brand";
 import { createClient } from "@/lib/supabase/server";
-import { GitBranchPlus, Play, Plus } from "lucide-react";
 import SectionsView from "./SectionsView";
 
 export default async function SectionsPage() {
   const supabase = await createClient();
 
-  const [{ data: sections }, { data: enrollments }, { data: simResults }] =
-    await Promise.all([
-      supabase
-        .from("sections")
-        .select(
-          `
+  const [
+    { data: sections },
+    { data: enrollments },
+    { data: simResults },
+    { data: teacherOpts },
+    { data: courseOpts },
+    { data: termOpts },
+    { data: studentOpts },
+  ] = await Promise.all([
+    supabase
+      .from("sections")
+      .select(
+        `
             id, label, state, created_at,
             course:courses(code, name),
             teacher:teachers(id, full_name, email,
@@ -21,12 +26,10 @@ export default async function SectionsPage() {
               )
             )
           `,
-        )
-        .order("label"),
-      supabase
-        .from("section_students")
-        .select(
-          `
+      )
+      .order("label"),
+    supabase.from("section_students").select(
+      `
             section_id, student_id,
             student:students(
               id, full_name, external_id,
@@ -38,50 +41,28 @@ export default async function SectionsPage() {
               )
             )
           `,
-        ),
-      supabase
-        .from("simulation_results")
-        .select(
-          `
+    ),
+    supabase
+      .from("simulation_results")
+      .select(
+        `
             section_id, compatibility_score, predicted_outcome, social_graph_impact,
             recommended:teachers!simulation_results_recommended_teacher_id_fkey(full_name)
           `,
-        )
-        .not("section_id", "is", null),
-    ]);
-
-  if (!sections || sections.length === 0) {
-    return (
-      <div className="p-8 max-w-7xl mx-auto">
-        <h1
-          className="text-4xl font-extrabold tracking-tight mb-1"
-          style={{ color: BRAND.textHeading }}
-        >
-          Section Builder
-        </h1>
-        <p
-          className="text-base mb-8"
-          style={{ color: BRAND.textHeading, opacity: 0.7 }}
-        >
-          Create sections, assign teachers and students, then run simulations.
-        </p>
-        <EmptyState
-          icon={GitBranchPlus}
-          title="No sections yet"
-          description="Create your first section to start assigning teachers and students."
-          action={
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-white"
-              style={{ backgroundColor: BRAND.teal }}
-            >
-              <Plus size={16} /> New Section
-            </button>
-          }
-        />
-      </div>
-    );
-  }
+      )
+      .not("section_id", "is", null),
+    // Option lists for the "New Section" / "Change teacher" forms.
+    supabase.from("teachers").select("id, full_name").order("full_name"),
+    supabase.from("courses").select("id, code, name").order("code"),
+    supabase
+      .from("academic_terms")
+      .select("id, name, is_active")
+      .order("name"),
+    supabase
+      .from("students")
+      .select("id, full_name, external_id")
+      .order("full_name"),
+  ]);
 
   // Group enrollments + sim results by section_id
   const studentsBySection = new Map<string, NonNullable<typeof enrollments>>();
@@ -95,7 +76,7 @@ export default async function SectionsPage() {
     (simResults ?? []).map((r) => [r.section_id, r]),
   );
 
-  const cards = sections.map((sec) => {
+  const cards = (sections ?? []).map((sec) => {
     type CT = { code: string; name: string };
     type Tp = {
       is_current: boolean;
@@ -155,6 +136,7 @@ export default async function SectionsPage() {
       state: sec.state,
       courseCode: course?.code ?? "",
       courseName: course?.name ?? "",
+      teacherId: teacher?.id ?? null,
       teacher: teacher
         ? {
             full_name: teacher.full_name,
@@ -177,42 +159,51 @@ export default async function SectionsPage() {
     };
   });
 
+  // Option lists for the New Section / Change teacher forms.
+  const teacherOptions = (teacherOpts ?? []).map((t) => ({
+    id: t.id as string,
+    full_name: t.full_name as string,
+  }));
+  const courseOptions = (courseOpts ?? []).map((c) => ({
+    id: c.id as string,
+    code: c.code as string,
+    name: c.name as string,
+  }));
+  const termOptions = (termOpts ?? []).map((t) => ({
+    id: t.id as string,
+    name: t.name as string,
+    is_active: t.is_active as boolean,
+  }));
+  const studentOptions = (studentOpts ?? []).map((s) => ({
+    id: s.id as string,
+    full_name: s.full_name as string,
+    external_id: (s.external_id as string | null) ?? null,
+  }));
+
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1
-            className="text-4xl font-extrabold tracking-tight"
-            style={{ color: BRAND.textHeading }}
-          >
-            Section Builder
-          </h1>
-          <p
-            className="text-base mt-1.5"
-            style={{ color: BRAND.textHeading, opacity: 0.7 }}
-          >
-            Configure teacher and student assignments per section.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-white transition hover:opacity-90"
-            style={{ backgroundColor: BRAND.purple }}
-          >
-            <Play size={14} /> Run Simulation
-          </button>
-          <button
-            type="button"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-white transition hover:opacity-90"
-            style={{ backgroundColor: BRAND.teal }}
-          >
-            <Plus size={16} /> New Section
-          </button>
-        </div>
+      <div>
+        <h1
+          className="text-4xl font-extrabold tracking-tight"
+          style={{ color: BRAND.textHeading }}
+        >
+          Section Builder
+        </h1>
+        <p
+          className="text-base mt-1.5"
+          style={{ color: BRAND.textHeading, opacity: 0.7 }}
+        >
+          Configure teacher and student assignments per section.
+        </p>
       </div>
 
-      <SectionsView sections={cards} />
+      <SectionsView
+        sections={cards}
+        teachers={teacherOptions}
+        courses={courseOptions}
+        terms={termOptions}
+        students={studentOptions}
+      />
     </div>
   );
 }

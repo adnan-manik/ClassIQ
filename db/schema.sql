@@ -48,7 +48,6 @@ CREATE TYPE fslsm_pole_b      AS ENUM ('reflective', 'intuitive', 'verbal', 'glo
 CREATE TYPE answer_choice     AS ENUM ('A', 'B');
 CREATE TYPE response_source   AS ENUM (
   'rdf_bulk_import',
-  'phd_pipeline',
   'form_app',
   'classiq_internal',
   'manual_admin'

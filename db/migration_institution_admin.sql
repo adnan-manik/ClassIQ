@@ -1,0 +1,21 @@
+-- ============================================================================
+-- ClassIQ — Migration: add `institution_admin` to user_role enum
+--
+-- Adds the new role that sits ABOVE hod and BELOW super_admin. The role
+-- inherits HoD-equivalent tenant-scoped access via the existing
+-- `tenant_isolation` policies (which key off `current_institution_id()`
+-- regardless of role). The `super_admin_all` override stays restricted
+-- to super_admin only — institution_admin must NOT bypass tenancy.
+--
+-- Run via Supabase SQL Editor. Idempotent: re-running is a no-op.
+-- Verify with:
+--   SELECT unnest(enum_range(NULL::user_role));
+--   -- expect 5 rows: super_admin, institution_admin, hod, teacher, student
+--
+-- Note: `ALTER TYPE ... ADD VALUE` cannot run inside a transaction block on
+-- some Postgres versions when followed by code that uses the new value in
+-- the same transaction. This file contains only the enum extension, so it
+-- can run as a single statement without a BEGIN/COMMIT wrapper.
+-- ============================================================================
+
+ALTER TYPE user_role ADD VALUE IF NOT EXISTS 'institution_admin' AFTER 'super_admin';

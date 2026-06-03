@@ -1,6 +1,8 @@
-"""Response shapes for /api/sections."""
+"""Request + response shapes for /api/sections."""
 
 from uuid import UUID
+
+from pydantic import Field
 
 from app.models.section import SectionState
 from app.models.simulation import FactorImpact, PredictedOutcome, SocialImpact
@@ -56,3 +58,25 @@ class SectionDetail(SectionListItem):
     """/api/sections/{id} — adds the enrolled student roster."""
 
     students: list[StudentListItem]
+
+
+class SectionCreate(APIModel):
+    """Create a new section (starts in `draft`)."""
+
+    course_id: UUID
+    academic_term_id: UUID
+    label: str = Field(..., min_length=1, max_length=120)
+    teacher_id: UUID | None = None
+    student_ids: list[UUID] = Field(default_factory=list)
+
+
+class SectionUpdate(APIModel):
+    """Patch a section. Only the fields present in the request are changed;
+    editing a `simulated` section drops it back to `draft`.
+
+    `teacher_id` may be null to unassign. Use `model_fields_set` server-side to
+    distinguish "absent" (leave as-is) from null (unassign).
+    """
+
+    label: str | None = Field(default=None, min_length=1, max_length=120)
+    teacher_id: UUID | None = None

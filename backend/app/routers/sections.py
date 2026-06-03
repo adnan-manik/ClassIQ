@@ -7,13 +7,15 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.deps import current_user
+from app.deps import require_role
 from app.models.auth_user import AuthUser, UserRole
 from app.repositories import sections as sections_repo
 from app.schemas.sections import (
     CourseRef,
+    SectionCreate,
     SectionDetail,
     SectionListItem,
+    SectionUpdate,
     SimulationFactorShape,
     SimulationResultShape,
     TeacherRef,
@@ -24,6 +26,9 @@ from app.schemas.teachers import TeacherProfileShape
 from app.services.compatibility_service import SimulateError, simulate_section
 
 router = APIRouter(prefix="/sections", tags=["sections"])
+
+# Section Builder is a staff workspace — HoD / Institution Admin / Super Admin.
+_staff = require_role(UserRole.hod, UserRole.institution_admin, UserRole.super_admin)
 
 
 async def _build_result_shape(
@@ -55,7 +60,7 @@ async def _build_result_shape(
 
 @router.get("", response_model=list[SectionListItem])
 async def list_sections(
-    user: Annotated[AuthUser, Depends(current_user)],
+    user: Annotated[AuthUser, Depends(_staff)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> list[SectionListItem]:
     rows = await sections_repo.list_sections(db, user.institution_id)
@@ -88,17 +93,13 @@ async def list_sections(
     return items
 
 
-@router.get("/{section_id}", response_model=SectionDetail)
-async def get_section(
-    section_id: UUID,
-    user: Annotated[AuthUser, Depends(current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-) -> SectionDetail:
-    bundle = await sections_repo.get_section(db, user.institution_id, section_id)
+async def _build_section_detail(
+    db: AsyncSession, institution_id: UUID, section_id: UUID
+) -> SectionDetail | None:
+    """Assemble the full SectionDetail shape (used by GET / POST / PATCH)."""
+    bundle = await sections_repo.get_section(db, institution_id, section_id)
     if not bundle:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Section not found"
-        )
+        return None
     sec, course, teacher, t_profile = bundle
 
     enrolled = await sections_repo.list_section_students(db, sec.id)
@@ -140,6 +141,82 @@ async def get_section(
     )
 
 
+@router.get("/{section_id}", response_model=SectionDetail)
+async def get_section(
+    section_id: UUID,
+    user: Annotated[AuthUser, Depends(_staff)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> SectionDetail:
+    detail = await _build_section_detail(db, user.institution_id, section_id)
+    if detail is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Section not found"
+        )
+    return detail
+
+
+@router.post("", response_model=SectionDetail, status_code=status.HTTP_201_CREATED)
+async def create_section_endpoint(
+    body: SectionCreate,
+    user: Annotated[AuthUser, Depends(_staff)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> SectionDetail:
+    """Create a new draft section (and enrol the given students)."""
+    try:
+        section_id = await sections_repo.create_section(
+            db,
+            institution_id=user.institution_id,
+            created_by=user.id,
+            course_id=body.course_id,
+            academic_term_id=body.academic_term_id,
+            label=body.label,
+            teacher_id=body.teacher_id,
+            student_ids=body.student_ids,
+        )
+    except sections_repo.SectionRefError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+
+    detail = await _build_section_detail(db, user.institution_id, section_id)
+    assert detail is not None  # just created
+    return detail
+
+
+@router.patch("/{section_id}", response_model=SectionDetail)
+async def update_section_endpoint(
+    section_id: UUID,
+    body: SectionUpdate,
+    user: Annotated[AuthUser, Depends(_staff)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> SectionDetail:
+    """Edit a section's label and/or assigned teacher. Editing a simulated
+    section drops it back to draft."""
+    fields = body.model_fields_set
+    try:
+        found = await sections_repo.update_section(
+            db,
+            institution_id=user.institution_id,
+            section_id=section_id,
+            set_label="label" in fields,
+            label=body.label,
+            set_teacher="teacher_id" in fields,
+            teacher_id=body.teacher_id,
+        )
+    except sections_repo.SectionRefError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+    if not found:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Section not found"
+        )
+
+    detail = await _build_section_detail(db, user.institution_id, section_id)
+    assert detail is not None
+    return detail
+
+
 @router.post(
     "/{section_id}/simulate",
     response_model=SimulateResponse,
@@ -147,18 +224,13 @@ async def get_section(
 )
 async def simulate_section_endpoint(
     section_id: UUID,
-    user: Annotated[AuthUser, Depends(current_user)],
+    user: Annotated[AuthUser, Depends(_staff)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> SimulateResponse:
     """Run the compatibility scoring engine on the section and persist the result.
 
-    HoD and Super Admin can trigger simulations.
+    Restricted to staff (HoD / Institution Admin / Super Admin) via `_staff`.
     """
-    if user.role not in (UserRole.hod, UserRole.super_admin):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only HoD or Super Admin can run simulations",
-        )
     try:
         _run, result, factors = await simulate_section(
             db,

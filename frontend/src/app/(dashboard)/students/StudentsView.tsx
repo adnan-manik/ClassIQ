@@ -1,6 +1,7 @@
 "use client";
 
 import Badge from "@/components/Badge";
+import CreateStudentModal from "@/components/CreateStudentModal";
 import EmptyState from "@/components/EmptyState";
 import FslsmBars from "@/components/FslsmBars";
 import LearningStyleCard from "@/components/LearningStyleCard";
@@ -10,7 +11,7 @@ import {
   type FslsmAxis,
   type StudentWithProfile,
 } from "@/lib/types";
-import { ArrowLeft, Search, Users, X } from "lucide-react";
+import { ArrowLeft, Plus, Search, Users, X } from "lucide-react";
 import { useMemo, useState } from "react";
 
 // Map participation level → an "engagement" percentage for the student card.
@@ -45,6 +46,7 @@ type Row = StudentWithProfile & {
 export default function StudentsView({ students }: { students: Row[] }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   // ─── Learning Style Overview data ──────────────────────────────────────
   const axisCounts: Record<FslsmAxis, number> = {
@@ -122,44 +124,80 @@ export default function StudentsView({ students }: { students: Row[] }) {
   if (students.length === 0) {
     return (
       <div className="p-8 max-w-7xl mx-auto">
-        <h1
-          className="text-4xl font-extrabold tracking-tight mb-1"
-          style={{ color: BRAND.textHeading }}
-        >
-          Student Digital Twin Profiles
-        </h1>
-        <p
-          className="text-base mb-8"
-          style={{ color: BRAND.textHeading, opacity: 0.7 }}
-        >
-          Each student carries a versioned FSLSM behavioral profile.
-        </p>
-        <EmptyState
-          icon={Users}
-          title="No students yet"
-          description="Students will appear here once their survey data is ingested."
-        />
+        <div className="flex items-start justify-between mb-1">
+          <div className="flex-1">
+            <h1
+              className="text-4xl font-extrabold tracking-tight mb-1"
+              style={{ color: BRAND.textHeading }}
+            >
+              Student Digital Twin Profiles
+            </h1>
+            <p
+              className="text-base"
+              style={{ color: BRAND.textHeading, opacity: 0.7 }}
+            >
+              Each student carries a versioned FSLSM behavioral profile.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-white whitespace-nowrap ml-4"
+            style={{ backgroundColor: BRAND.teal }}
+            onClick={() => setShowCreateModal(true)}
+          >
+            <Plus size={18} />
+            Create Student
+          </button>
+        </div>
+        <div className="mt-8">
+          <EmptyState
+            icon={Users}
+            title="No students yet"
+            description="Students will appear here once their survey data is ingested."
+          />
+        </div>
       </div>
     );
   }
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6">
+      <CreateStudentModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onSuccess={() => {
+          setShowCreateModal(false);
+          // Optionally refresh the page or re-fetch data
+          window.location.reload();
+        }}
+      />
+
       {/* ── Header ──────────────────────────────────────────────────── */}
-      <div>
-        <h1
-          className="text-4xl font-extrabold tracking-tight"
-          style={{ color: BRAND.textHeading }}
+      <div className="flex items-start justify-between">
+        <div className="flex-1">
+          <h1
+            className="text-4xl font-extrabold tracking-tight"
+            style={{ color: BRAND.textHeading }}
+          >
+            Student Digital Twin Profiles
+          </h1>
+          <p
+            className="text-base mt-1.5"
+            style={{ color: BRAND.textHeading, opacity: 0.7 }}
+          >
+            Versioned FSLSM behavioral profiles per student. Click a card to view
+            their full profile.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-white whitespace-nowrap ml-4 shrink-0"
+          style={{ backgroundColor: BRAND.teal }}
+          onClick={() => setShowCreateModal(true)}
         >
-          Student Digital Twin Profiles
-        </h1>
-        <p
-          className="text-base mt-1.5"
-          style={{ color: BRAND.textHeading, opacity: 0.7 }}
-        >
-          Versioned FSLSM behavioral profiles per student. Click a card to view
-          their full profile.
-        </p>
+          <Plus size={18} />
+          Create Student
+        </button>
       </div>
 
       {/* ── Learning Style Overview ─────────────────────────────────── */}

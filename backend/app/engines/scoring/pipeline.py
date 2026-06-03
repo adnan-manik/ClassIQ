@@ -56,35 +56,42 @@ class ScoringOutput:
     factors: list[FactorScore]
 
 
+_AXIS_POLES: dict[FslsmAxis, tuple[str, str]] = {
+    FslsmAxis.active_reflective: ("active", "reflective"),
+    FslsmAxis.sensing_intuitive: ("sensing", "intuitive"),
+    FslsmAxis.visual_verbal: ("visual", "verbal"),
+    FslsmAxis.sequential_global: ("sequential", "global"),
+}
+
+
 def _style_distribution(profiles: list[StudentProfile]) -> dict[str, dict[str, int]]:
     """Per-axis pole share as percentages, e.g.
         {"visual_verbal": {"visual": 70, "verbal": 30}, ...}
-    """
-    if not profiles:
-        return {axis.value: {} for axis in FslsmAxis}
 
+    Always emits both poles for every axis (0/0 when there's no data) so the
+    JSONB shape is stable for downstream consumers (charts, the report view).
+    """
     out: dict[str, dict[str, int]] = {}
-    label_pairs = {
-        FslsmAxis.active_reflective: ("active", "reflective"),
-        FslsmAxis.sensing_intuitive: ("sensing", "intuitive"),
-        FslsmAxis.visual_verbal: ("visual", "verbal"),
-        FslsmAxis.sequential_global: ("sequential", "global"),
-    }
-    for axis, (pole_a, pole_b) in label_pairs.items():
+    for axis, (pole_a, pole_b) in _AXIS_POLES.items():
         field = f"{axis.value}_score"
         a_count = sum(1 for p in profiles if getattr(p, field) > 0)
         b_count = sum(1 for p in profiles if getattr(p, field) < 0)
-        total = max(a_count + b_count, 1)
-        out[axis.value] = {
-            pole_a: round((a_count / total) * 100),
-            pole_b: round((b_count / total) * 100),
-        }
+        total = a_count + b_count
+        if total == 0:
+            out[axis.value] = {pole_a: 0, pole_b: 0}
+        else:
+            out[axis.value] = {
+                pole_a: round((a_count / total) * 100),
+                pole_b: round((b_count / total) * 100),
+            }
     return out
 
 
 def score_section(inp: ScoringInput) -> ScoringOutput:
     """Run the full scoring pipeline against a single section."""
-    w = inp.weights or DEFAULT_WEIGHTS
+    # Merge over defaults so a config missing (or with extra) keys never raises
+    # KeyError and never silently zero-weights a factor.
+    w = {**DEFAULT_WEIGHTS, **(inp.weights or {})}
 
     style_score = style_alignment.score(inp.student_profiles, inp.teacher_profile)
     social_result = social_cohesion.score(

@@ -73,15 +73,36 @@ def graph_metrics(g: nx.DiGraph) -> GraphMetrics:
         )
 
     density = nx.density(g)
-    # NetworkX clustering treats the graph as undirected for the avg metric.
-    avg_clustering = nx.average_clustering(g.to_undirected()) if m > 0 else 0.0
+
+    # Clustering should reflect *cohesive* (positive) structure only. Building
+    # it on the raw undirected projection would let conflict/neutral edges count
+    # as cohesion. We project onto positive-weight edges and measure clustering
+    # there.
+    positive_edges = [
+        (u, v) for u, v, d in g.edges(data=True) if d.get("weight", 0) > 0
+    ]
+    if positive_edges:
+        pos_g: nx.Graph = nx.Graph()
+        pos_g.add_nodes_from(g.nodes)
+        pos_g.add_edges_from(positive_edges)
+        avg_clustering = nx.average_clustering(pos_g)
+    else:
+        avg_clustering = 0.0
 
     conflict = sum(1 for _, _, d in g.edges(data=True) if d.get("type") == "conflict")
     positive = sum(1 for _, _, d in g.edges(data=True) if d.get("weight", 0) > 0)
     conflict_density = conflict / m if m else 0.0
     positive_share = positive / m if m else 0.0
 
-    isolated = sum(1 for node in g.nodes if g.degree(node) == 0)
+    # A student is "isolated" if no incident edge carries a real relational
+    # signal. Neutral edges have weight 0 (no signal), so a student whose only
+    # ties are neutral counts as isolated.
+    connected: set = set()
+    for u, v, d in g.edges(data=True):
+        if d.get("weight", 0) != 0:
+            connected.add(u)
+            connected.add(v)
+    isolated = sum(1 for node in g.nodes if node not in connected)
 
     return GraphMetrics(
         n_nodes=n,

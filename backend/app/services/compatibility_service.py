@@ -11,7 +11,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.engines.scoring import ScoringInput, score_section
-from app.engines.scoring.pipeline import DEFAULT_WEIGHTS, ScoringOutput
+from app.engines.scoring.pipeline import ScoringOutput
 from app.models.peer_relationship import PeerRelationship
 from app.models.section import Section, SectionState, SectionStudent
 from app.models.simulation import (
@@ -98,7 +98,14 @@ async def simulate_section(
             await db.execute(
                 select(StudentAuxProfile)
                 .where(StudentAuxProfile.student_id.in_(student_ids))
-                .where(StudentAuxProfile.academic_term_id == sec.academic_term_id)
+                # Match this term OR term-agnostic rows (academic_term_id is
+                # nullable). An equality-only filter silently drops NULL-term
+                # aux profiles, so participation would score against an empty
+                # set even though the roster view shows those profiles.
+                .where(
+                    (StudentAuxProfile.academic_term_id == sec.academic_term_id)
+                    | (StudentAuxProfile.academic_term_id.is_(None))
+                )
                 .where(StudentAuxProfile.is_current.is_(True))
                 .where(StudentAuxProfile.deleted_at.is_(None))
             )
@@ -120,9 +127,17 @@ async def simulate_section(
     )
 
     # ── 7. Scoring config ────────────────────────────────────────────────
+    # simulation_runs.scoring_config_id is NOT NULL + a real FK, so we must
+    # reference an existing config. Fabricating a UUID here would violate the
+    # FK and 500 with an opaque error — fail cleanly instead.
     cfg = await scoring_repo.get_default_config(db, institution_id)
-    weights = cfg.weights if cfg else dict(DEFAULT_WEIGHTS)
-    scoring_config_id = cfg.id if cfg else uuid4()
+    if cfg is None:
+        raise SimulateError(
+            "No scoring configuration is available. Seed a default "
+            "scoring_config (global or for this institution) before simulating."
+        )
+    weights = cfg.weights
+    scoring_config_id = cfg.id
 
     # ── 8. Run engine ───────────────────────────────────────────────────
     output: ScoringOutput = score_section(

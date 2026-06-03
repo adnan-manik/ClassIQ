@@ -33,8 +33,8 @@ flowchart LR
     end
 
     subgraph External["External Systems"]
-        FormApp[Upstream Form App]
-        PhD[PhD FSLSM Pipeline]
+        FormApp[ClassIQ Survey / Form App]
+        FSLSM[FSLSM Content Recs<br/>Mr. Mubassher]
         LLM[Anthropic / OpenAI API]
     end
 
@@ -51,7 +51,7 @@ flowchart LR
     API -.->|S2 NL queries| LLM
 
     FormApp -.->|responses| Ingest
-    PhD -.->|scored profiles| Ingest
+    FSLSM -.->|content recs| Ingest
 
     Auth --- DB
 ```
@@ -59,7 +59,7 @@ flowchart LR
 **Notes**
 - Frontend talks REST to FastAPI only (no direct DB writes from client beyond what Supabase Auth needs).
 - Supabase Auth issues the JWT; FastAPI verifies it and resolves the institution scope.
-- Form-app and PhD pipeline are *upstream* — they push to Ingestion, never the reverse.
+- The ClassIQ form-app is *upstream* — it pushes to Ingestion, never the reverse. Mr. Mubassher's FSLSM is the external source of teaching content recommendations only.
 
 ---
 
@@ -121,7 +121,7 @@ flowchart TB
         subgraph ingestion["ingestion/"]
             Ing_RDF["rdf_parser"]
             Ing_Form["form_app_adapter"]
-            Ing_PhD["phd_pipeline_adapter"]
+            Ing_Manual["manual_admin_adapter"]
         end
 
         subgraph llm["llm/"]
@@ -245,14 +245,13 @@ Each factor scorer is a pure function `(input) -> (score, evidence)`. The aggreg
 
 ---
 
-## 5. Ingestion Pipeline (RDF / form-app / PhD pipeline → DB)
+## 5. Ingestion Pipeline (RDF / form-app → DB)
 
 ```mermaid
 flowchart TB
     subgraph S1["Source — choose one adapter"]
         RDF["RDF Bulk Import<br/>(Data_File_…RDF_Triples.rdf)"]
-        Form["Form-App Webhook<br/>(JSON per submission)"]
-        PhD["PhD Pipeline Handoff<br/>(format TBD next meeting)"]
+        Form["ClassIQ Form-App Webhook<br/>(JSON per submission)"]
         Manual["Admin Manual Entry"]
     end
 
@@ -274,7 +273,6 @@ flowchart TB
 
     RDF --> Adapt
     Form --> Adapt
-    PhD --> Adapt
     Manual --> Adapt
 
     Adapt --> Job --> Validate

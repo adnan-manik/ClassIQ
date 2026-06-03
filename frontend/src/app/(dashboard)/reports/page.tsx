@@ -4,7 +4,8 @@ import ScoreRing from "@/components/ScoreRing";
 import { BRAND } from "@/lib/brand";
 import { createClient } from "@/lib/supabase/server";
 import { FSLSM_AXES, type FslsmAxis } from "@/lib/types";
-import { Download, FileBarChart, Printer } from "lucide-react";
+import { FileBarChart } from "lucide-react";
+import ReportActions from "./ReportActions";
 
 export default async function ReportsPage() {
   const supabase = await createClient();
@@ -41,28 +42,7 @@ export default async function ReportsPage() {
             Per-section output after the compatibility scoring engine runs.
           </p>
         </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm bg-white"
-            style={{
-              border: `1px solid ${BRAND.cardBorder}`,
-              color: BRAND.text,
-            }}
-          >
-            <Download size={15} /> Export PDF
-          </button>
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm bg-white"
-            style={{
-              border: `1px solid ${BRAND.cardBorder}`,
-              color: BRAND.text,
-            }}
-          >
-            <Printer size={15} /> Print
-          </button>
-        </div>
+        <ReportActions />
       </div>
 
       {!results || results.length === 0 ? (
@@ -143,9 +123,11 @@ export default async function ReportsPage() {
                     {(Object.keys(FSLSM_AXES) as FslsmAxis[]).map((axis) => {
                       const meta = FSLSM_AXES[axis];
                       const axisDist = dist[axis] ?? {};
-                      const [poleAKey, poleBKey] = Object.keys(axisDist);
-                      const poleAval = axisDist[poleAKey] ?? 0;
-                      const poleBval = axisDist[poleBKey] ?? 0;
+                      // Resolve poles by known key (backend emits lowercased
+                      // pole labels), NOT by JSONB key order, which Postgres
+                      // does not guarantee — otherwise the two poles can swap.
+                      const poleAval = axisDist[meta.poleA.toLowerCase()] ?? 0;
+                      const poleBval = axisDist[meta.poleB.toLowerCase()] ?? 0;
                       return (
                         <div
                           key={axis}
@@ -180,10 +162,10 @@ export default async function ReportsPage() {
                             style={{ color: BRAND.textMuted }}
                           >
                             <span>
-                              {poleAKey} {poleAval}%
+                              {meta.poleA} {poleAval}%
                             </span>
                             <span>
-                              {poleBKey} {poleBval}%
+                              {meta.poleB} {poleBval}%
                             </span>
                           </div>
                         </div>

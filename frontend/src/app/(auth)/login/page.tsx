@@ -26,9 +26,23 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const active = ROLE_TABS.find((t) => t.id === activeRole)!;
+
+  async function handleForgotPassword(e: React.MouseEvent) {
+    e.preventDefault();
+    setError(null);
+    setNotice(null);
+    if (!email) {
+      setError("Enter your email above first, then click “forgot password?”.");
+      return;
+    }
+    const { error: resetErr } = await supabase.auth.resetPasswordForEmail(email);
+    if (resetErr) setError(resetErr.message);
+    else setNotice("Password reset link sent — check your email.");
+  }
 
   async function handleSignIn(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -52,9 +66,19 @@ export default function LoginPage() {
       .eq("id", data.user.id)
       .single();
 
-    const role = profile?.role as RoleId | undefined;
+    const role = profile?.role as string | undefined;
+    if (!role) {
+      // Signed in, but no profile row / role — don't silently dump them on the
+      // HoD dashboard (the layout would just bounce them back to /login).
+      setError(
+        "Your account has no role configured yet. Contact your administrator.",
+      );
+      setLoading(false);
+      return;
+    }
     if (role === "teacher") router.push("/teacher-dashboard");
-    else if (role === "super_admin") router.push("/admin");
+    else if (role === "super_admin" || role === "institution_admin")
+      router.push("/admin");
     else router.push("/");
 
     router.refresh();
@@ -235,7 +259,7 @@ export default function LoginPage() {
                   href="#"
                   className="text-xs font-medium hover:underline"
                   style={{ color: "var(--brand-coral)" }}
-                  onClick={(e) => e.preventDefault()}
+                  onClick={handleForgotPassword}
                 >
                   forgot password?
                 </a>
@@ -248,6 +272,13 @@ export default function LoginPage() {
                 </div>
               )}
 
+              {/* Notice (e.g. reset email sent) */}
+              {notice && (
+                <div className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-2xl px-4 py-3 mb-4">
+                  {notice}
+                </div>
+              )}
+
               {/* LOGIN button */}
               <button
                 type="submit"
@@ -257,26 +288,7 @@ export default function LoginPage() {
               >
                 {loading ? "Signing in…" : "Login"}
               </button>
-
-              {/* Sign up link */}
-              <p className="text-center text-xs mt-4 text-slate-500">
-                Don&apos;t have an account?{" "}
-                <a
-                  href="#"
-                  className="font-medium hover:underline"
-                  style={{ color: "var(--brand-coral)" }}
-                  onClick={(e) => e.preventDefault()}
-                >
-                  Sign up.
-                </a>
-              </p>
             </form>
-
-            {/* Demo hint */}
-            <p className="text-center text-[11px] mt-6 text-slate-400">
-              Demo account for <strong>{active.label}</strong>:{" "}
-              <code className="font-mono">{active.demoEmail}</code>
-            </p>
           </div>
 
           {/* ─── Right column: illustration ────────────────────────── */}

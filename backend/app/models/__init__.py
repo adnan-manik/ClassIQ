@@ -1,4 +1,6 @@
+from app.models.audit_log import AuditLog
 from app.models.auth_user import AuthUser, UserRole
+from app.models.ingestion_job import IngestionJob, IngestionStatus, ResponseSource
 from app.models.institution import (
     AcademicTerm,
     Course,
@@ -34,15 +36,19 @@ from app.models.teacher import (
     Teacher,
     TeacherProfile,
 )
+from app.models.user_department import UserDepartment
 
 __all__ = [
     "AcademicTerm",
+    "AuditLog",
     "AuthUser",
     "CollabPref",
     "Course",
     "Department",
     "FactorImpact",
     "FslsmAxis",
+    "IngestionJob",
+    "IngestionStatus",
     "Institution",
     "InteractionLevel",
     "PacingPref",
@@ -51,6 +57,7 @@ __all__ = [
     "PredictedOutcome",
     "RelationshipSource",
     "RelationshipType",
+    "ResponseSource",
     "Section",
     "SectionState",
     "SectionStudent",
@@ -64,5 +71,6 @@ __all__ = [
     "StudentProfile",
     "Teacher",
     "TeacherProfile",
+    "UserDepartment",
     "UserRole",
 ]
