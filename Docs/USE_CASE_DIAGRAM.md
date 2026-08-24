@@ -22,6 +22,43 @@ restricted. Each actor below lists only the cases *added* at that level.
 
 ---
 
+## Simplified Use Case Diagram (Mermaid)
+
+> A high-level overview of the three core roles and what each does.
+
+```mermaid
+flowchart LR
+  IA([Institution Admin]):::actor
+  HOD([HoD]):::actor
+  T([Teacher]):::actor
+
+  subgraph INST[Institution Admin]
+    USR(Manage users)
+    DEPT(Manage departments)
+    HASN(Assign HoD)
+  end
+
+  subgraph PLAN[Section Planning]
+    SEC(Build / edit sections)
+    SIM(Run simulation)
+    REP(View report)
+    VIZ(Visualise social graph)
+  end
+
+  subgraph TV[Teacher View]
+    TF(View class FSLSM breakdown)
+    TR(View content recommendations)
+  end
+
+  IA --> USR & DEPT & HASN
+  HOD --> SEC & SIM & REP & VIZ
+  T --> TF & TR
+
+  classDef actor fill:#0D9488,stroke:#0b5,color:#fff;
+```
+
+---
+
 ## UML Use Case Diagram (PlantUML)
 
 > Render at <https://www.plantuml.com/plantuml> or with the PlantUML VS Code extension.

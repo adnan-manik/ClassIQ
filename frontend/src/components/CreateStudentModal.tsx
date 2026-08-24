@@ -158,7 +158,7 @@ export default function CreateStudentModal({
             id="studentId"
             value={studentId}
             onChange={(e) => setStudentId(e.target.value)}
-            placeholder="STU-2024-001"
+            placeholder="SP26-BSCS-0001"
             className="w-full px-4 py-2 rounded-lg border outline-none transition"
             style={{
               borderColor: BRAND.cardBorder,

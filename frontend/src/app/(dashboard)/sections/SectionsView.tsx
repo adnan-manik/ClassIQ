@@ -15,7 +15,8 @@ import {
   X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useActionState, useEffect } from "react";
+import { createCourse, type ActionResult } from "./_actions";
 
 interface SectionCard {
   id: string;
@@ -93,6 +94,7 @@ export default function SectionsView({
 
   // New-section modal
   const [newOpen, setNewOpen] = useState(false);
+  const [newCourseOpen, setNewCourseOpen] = useState(false);
 
   // Change-teacher (inline in the detail panel)
   const [changingTeacher, setChangingTeacher] = useState(false);
@@ -185,6 +187,14 @@ export default function SectionsView({
             : `Run Simulation${
                 simulatable.length ? ` (${simulatable.length})` : ""
               }`}
+        </button>
+        <button
+          type="button"
+          onClick={() => setNewCourseOpen(true)}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-white transition hover:opacity-90"
+          style={{ backgroundColor: BRAND.indigo }}
+        >
+          <Plus size={16} /> New Course
         </button>
         <button
           type="button"
@@ -567,6 +577,9 @@ export default function SectionsView({
           }}
         />
       )}
+      {newCourseOpen && (
+        <NewCourseModal onClose={() => setNewCourseOpen(false)} />
+      )}
     </>
   );
 }
@@ -814,7 +827,10 @@ function SelectField({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="w-full px-3 py-2 rounded-lg text-sm outline-none bg-white"
-        style={{ border: `1px solid ${BRAND.inputBorder}`, color: BRAND.text }}
+        style={{
+          border: `1px solid ${BRAND.inputBorder}`,
+          color: BRAND.text,
+        }}
       >
         {children}
       </select>
@@ -822,16 +838,34 @@ function SelectField({
   );
 }
 
+function DetailField({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div
+        className="text-[10px] uppercase tracking-wider mb-0.5"
+        style={{ color: BRAND.textMuted }}
+      >
+        {label}
+      </div>
+      <div className="text-sm font-medium capitalize" style={{ color: BRAND.text }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
 function Th({
   children,
-  className = "",
+  className,
 }: {
   children: React.ReactNode;
   className?: string;
 }) {
   return (
     <th
-      className={`text-left px-4 py-2 font-medium ${className}`}
+      className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider ${
+        className ?? ""
+      }`}
       style={{ color: BRAND.textMuted }}
     >
       {children}
@@ -839,24 +873,123 @@ function Th({
   );
 }
 
-function DetailField({ label, value }: { label: string; value: string }) {
+function NewCourseModal({
+  onClose,
+}: {
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
+    createCourse,
+    null,
+  );
+
+  useEffect(() => {
+    if (state?.ok) {
+      onClose();
+      router.refresh();
+    }
+  }, [state, router, onClose]);
+
   return (
     <div
-      className="bg-white rounded-lg p-3"
-      style={{ border: `1px solid ${BRAND.cardBorder}` }}
+      className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+      onClick={onClose}
     >
       <div
-        className="text-[10px] uppercase tracking-wider"
-        style={{ color: BRAND.textMuted }}
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-xl"
+        style={{ border: `2px solid ${BRAND.indigo}` }}
       >
-        {label}
-      </div>
-      <div
-        className="text-sm font-semibold capitalize mt-0.5"
-        style={{ color: BRAND.text }}
-      >
-        {value}
+        <div className="flex items-start justify-between mb-4">
+          <h2
+            className="text-xl font-extrabold tracking-tight"
+            style={{ color: BRAND.textHeading }}
+          >
+            New Course
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="text-slate-400 hover:text-slate-700"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <form action={formAction} className="space-y-4">
+          <label className="block">
+            <div
+              className="text-xs uppercase font-semibold mb-1"
+              style={{ color: BRAND.textMuted }}
+            >
+              Course Code
+            </div>
+            <input
+              name="code"
+              required
+              placeholder="e.g. CS101"
+              className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+              style={{
+                border: `1px solid ${BRAND.inputBorder}`,
+                color: BRAND.text,
+              }}
+            />
+          </label>
+          <label className="block">
+            <div
+              className="text-xs uppercase font-semibold mb-1"
+              style={{ color: BRAND.textMuted }}
+            >
+              Course Name
+            </div>
+            <input
+              name="name"
+              required
+              placeholder="e.g. Introduction to Computer Science"
+              className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+              style={{
+                border: `1px solid ${BRAND.inputBorder}`,
+                color: BRAND.text,
+              }}
+            />
+          </label>
+
+          {state?.error && (
+            <div
+              className="text-sm rounded-lg px-3 py-2"
+              style={{
+                backgroundColor: "#FEE2E2",
+                color: "#991B1B",
+                border: "1px solid #FECACA",
+              }}
+            >
+              {state.error}
+            </div>
+          )}
+
+          <div className="flex gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2 rounded-full text-sm font-semibold"
+              style={{ backgroundColor: BRAND.subtleBg, color: BRAND.text }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={pending}
+              className="flex-1 py-2 rounded-full text-sm font-semibold text-white disabled:opacity-50"
+              style={{ backgroundColor: BRAND.indigo }}
+            >
+              {pending ? "Creating…" : "Create course"}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
 }
+
