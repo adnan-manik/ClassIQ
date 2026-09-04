@@ -527,7 +527,7 @@ Pydantic schemas live in `app/schemas/` and mirror the DB shapes from DATA_MODEL
 
 ## 13. Open Items
 
-- **Apply the 2026-09-04 migrations** (`db/migrations/2026-09-04_seed_ils_instrument.sql`, `2026-09-04_early_warning.sql`) to the shared Supabase project — it was unreachable when they were written; both are idempotent.
+- **RLS helper naming** — the live database's helper is `get_current_role()` (`current_role` is a reserved word); `db/schema.sql` and DATA_MODEL §12 now use that name. Any future migration touching policies must too.
 - **Per-role RLS policy matrix** — currently described in [DATA_MODEL.md §12](DATA_MODEL.md); needs explicit per-table/per-role read/write table. `tests/rls/test_rls_isolation.py` is the executable check once `TEST_DATABASE_URL` points at a seeded database.
 - **Scoring weights starting values** — defaults are seeded (0.40 / 0.25 / 0.20 / 0.15); tune with Mr. Mubassher's input.
 - **Early-warning expectation bands** (`engines/early_warning.py::EXPECTED`) — first-pass thresholds; calibrate against a real semester.

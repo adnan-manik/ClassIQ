@@ -703,11 +703,11 @@ D:\FYP-
 | Teacher Dashboard (read-only + S1 data entry) | ✅ Done | `teacher-dashboard/page.tsx`, `components/OutcomeEntry.tsx` |
 | Social graph view (custom SVG) | ✅ Done | `social-graph/SocialGraphView.tsx` |
 | Institution analytics (+ department drill-down, simulations by department) | ✅ Done | `institution_analytics`, `/admin/analytics`, `AnalyticsDrilldown.tsx` |
-| S1 Early warning | ✅ Done (migration pending) | `db/migrations/2026-09-04_early_warning.sql`, `engines/early_warning.py`, `routers/early_warning.py`, `/early-warning` |
+| S1 Early warning | ✅ Done | `db/migrations/2026-09-04_early_warning.sql`, `engines/early_warning.py`, `routers/early_warning.py`, `/early-warning` |
 | S2 Ask ClassIQ (NL query) | ✅ Done (needs `ANTHROPIC_API_KEY`) | `backend/app/llm/`, `routers/llm.py`, `/ask` |
 | S3 Longitudinal analytics | ✅ Done | `routers/longitudinal.py`, `/api/students/{id}/profile-history`, `/longitudinal`, `components/ProfileHistory.tsx` |
 | Automated tests (pytest / Vitest) | ✅ Done | `backend/tests/` (69 tests; RLS suite skips without `TEST_DATABASE_URL`), `frontend/src/lib/stats.test.ts` |
-| Migrations applied to the shared Supabase project | ⬜ Pending | `db/migrations/2026-09-04_*.sql` — project was unreachable on 4 Sep 2026 |
+| Migrations applied to the shared Supabase project | ✅ Done (4 Sep 2026) | `db/migrations/2026-09-04_*.sql` — 44 ILS questions seeded, S1 tables + RLS live; DB is PostgreSQL 17.6, 29 tables |
 | Integration testing with real data, report, presentation | ⬜ Pending | Phase 6 team activities |
 
 Legend: ✅ implemented · 🟡 partial/stub · ⬜ not started/pending.

@@ -50,6 +50,7 @@ async def test_tenant_sees_only_its_own_rows(table):
     try:
         async with engine.connect() as conn:
             tenants = await _tenants(conn)
+            await conn.rollback()  # end the autobegun read txn before the per-tenant begin()
             if len(tenants) < 2:
                 pytest.skip("need two institutions with a HoD/admin each")
             for inst, uid in tenants.items():

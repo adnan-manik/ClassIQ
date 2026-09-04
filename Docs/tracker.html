@@ -351,8 +351,9 @@ footer code { font-size:11.5px; background:var(--surface-2); padding:1px 5px; bo
         (the 176-student RDF dump parses end to end), section lifecycle and roster editing, an
         audited course catalogue, the S1 early-warning system, S3 longitudinal analytics, the S2
         <em>Ask ClassIQ</em> assistant, and a test suite (69 pytest + 8 Vitest, tsc and eslint
-        clean). What is left is <strong>operational</strong>: apply two migrations to the shared
-        Supabase project (unreachable today), run against real data, and write the report.</p>
+        clean). Both new migrations are applied to the shared Supabase project. What is left is
+        <strong>operational</strong>: run the new write paths against real data, and write the
+        report.</p>
       </div>
 
       <div class="tiles">
@@ -375,12 +376,12 @@ footer code { font-size:11.5px; background:var(--surface-2); padding:1px 5px; bo
         <div class="card tile">
           <span class="k">Tests</span>
           <span class="v" style="font-size:23px">77 <span style="font-size:15px;font-weight:500;color:var(--text-muted)">passing</span></span>
-          <span class="n">69 pytest (5 RLS tests skip without a test DB) · 8 Vitest · tsc + eslint clean</span>
+          <span class="n">69 pytest + RLS suite against the live DB · 8 Vitest · tsc + eslint clean</span>
         </div>
         <div class="card tile">
           <span class="k">Schema</span>
           <span class="v">29</span>
-          <span class="n">tables · 22 enum types · RLS on every tenant table · 2 migrations pending</span>
+          <span class="n">tables · 22 enum types · RLS on every tenant table · PostgreSQL 17.6</span>
         </div>
       </div>
 
@@ -388,14 +389,13 @@ footer code { font-size:11.5px; background:var(--surface-2); padding:1px 5px; bo
         <h3>Needs attention</h3>
         <ul class="att-list">
           <li>
-            <span class="stripe" style="background:var(--risk)"></span>
+            <span class="stripe" style="background:var(--warn)"></span>
             <div>
-              <div class="t">Two migrations are not applied</div>
-              <div class="d">The shared Supabase project was unreachable on 4 Sep (pooler reports the
-              tenant as not found — probably paused). Run
-              <code>db/migrations/2026-09-04_seed_ils_instrument.sql</code> and
-              <code>2026-09-04_early_warning.sql</code> with <code>run_migrations.mjs</code>; both
-              are idempotent. The early-warning endpoints error until the second one is in.</div>
+              <div class="t">Schema docs said <code>current_role()</code>; the database says <code>get_current_role()</code></div>
+              <div class="d"><code>current_role</code> is a reserved word, so the helper in the checked-in
+              <code>db/schema.sql</code> could never have parsed — the live project uses
+              <code>get_current_role()</code>. Both the schema snapshot and DATA_MODEL §12 now use the
+              real name; the S1 migration failed once on this before being fixed and applied.</div>
             </div>
           </li>
           <li>
@@ -403,9 +403,9 @@ footer code { font-size:11.5px; background:var(--surface-2); padding:1px 5px; bo
             <div>
               <div class="t">No run against the live database yet</div>
               <div class="d">All 69 backend tests are hermetic (engines, adapters, auth path with a
-              stubbed session). The RLS-isolation suite in <code>tests/rls/</code> and every
-              write path still need one pass against a seeded database — do this right after the
-              migrations.</div>
+              stubbed session). The RLS-isolation suite in <code>tests/rls/</code> was run against the
+              live project after the migrations; the new write paths (scenarios, ingestion, early
+              warning) still need one end-to-end pass with a signed-in HoD.</div>
             </div>
           </li>
           <li>
@@ -711,7 +711,7 @@ footer code { font-size:11.5px; background:var(--surface-2); padding:1px 5px; bo
         </div>
         <div class="keyline">
           <span><i></i> Read or written by shipped code</span>
-          <span><i class="dash"></i> Code is written — table not yet created in the shared database (migration pending)</span>
+          <span><i class="dash"></i> Created on 4 Sep 2026 — no rows yet</span>
         </div>
       </div>
     </section>
@@ -863,7 +863,7 @@ footer code { font-size:11.5px; background:var(--surface-2); padding:1px 5px; bo
               <tr><td class="m">GET</td><td class="p">/api/ingestion/jobs · /jobs/{id} · /instrument</td><td>Live</td></tr>
               <tr><td class="m">GET</td><td class="p">/api/reports/sections/{id}</td><td>Live — staff or the assigned teacher</td></tr>
               <tr><td class="m">GET</td><td class="p">/api/analytics/longitudinal</td><td>Live — S3</td></tr>
-              <tr><td class="m">GET PATCH</td><td class="p">/api/early-warning/overview · /flags · /flags/{id}</td><td>Live — S1 (needs the 2026-09-04 migration)</td></tr>
+              <tr><td class="m">GET PATCH</td><td class="p">/api/early-warning/overview · /flags · /flags/{id}</td><td>Live — S1</td></tr>
               <tr><td class="m">GET POST</td><td class="p">/api/early-warning/sections/{id}/outcomes · /evaluate · /flags</td><td>Live — teachers may record their own sections</td></tr>
               <tr><td class="m">GET POST</td><td class="p">/api/llm/status · /api/llm/query</td><td>Live — S2, 503 until ANTHROPIC_API_KEY is set</td></tr>
               <tr><td class="m">GET POST PATCH</td><td class="p">/api/admin/institutions</td><td>Live</td></tr>
@@ -958,13 +958,13 @@ const ITEMS = [
   { g:"p4", t:"Phase 4 milestone demo & review", s:"todo", o:"All", d:"2d", w:"—" },
 
   // ── Phase 5
-  { g:"p5", t:"S1 — Early warning system", s:"done", o:"Khubaib", d:"—", w:"db/migrations/2026-09-04_early_warning.sql · engines/early_warning.py · routers/early_warning.py · (dashboard)/early-warning", note:"Migration not yet applied to the shared Supabase project" },
+  { g:"p5", t:"S1 — Early warning system", s:"done", o:"Khubaib", d:"—", w:"db/migrations/2026-09-04_early_warning.sql (applied 4 Sep) · engines/early_warning.py · routers/early_warning.py · (dashboard)/early-warning" },
   { g:"p5", t:"S2 — Natural-language query interface (Ask ClassIQ)", s:"done", o:"Khubaib", d:"—", w:"backend/app/llm/ (client, prompts, context) · routers/llm.py · (dashboard)/ask", note:"Needs ANTHROPIC_API_KEY in backend/.env; default model claude-opus-5, cached tenant snapshot, 4096-token cap" },
   { g:"p5", t:"S3 — Longitudinal analytics", s:"done", o:"Khubaib, Adnan", d:"—", w:"routers/longitudinal.py · GET /api/students/{id}/profile-history · (dashboard)/longitudinal · components/ProfileHistory.tsx", note:"No migration needed — built on versioned student_profiles" },
 
   // ── Phase 6
   { g:"p6", t:"Automated test suite (pytest, RLS isolation, Vitest)", s:"done", o:"Khubaib, Adnan", d:"—", w:"backend/tests/ — 69 tests (engines, adapters, auth path); tests/rls/ runs when TEST_DATABASE_URL is set · frontend/src/lib/stats.test.ts (Vitest)", note:"RLS suite needs a seeded test database to execute" },
-  { g:"p6", t:"Integration testing with real data", s:"todo", o:"Khubaib, Adnan", d:"10d", w:"Blocked on 4 Sep: shared Supabase project unreachable. Apply db/migrations/2026-09-04_*.sql, then import the RDF dump through /ingestion and run the RLS suite", note:"First thing to do once the database is back" },
+  { g:"p6", t:"Integration testing with real data", s:"todo", o:"Khubaib, Adnan", d:"10d", w:"Migrations applied 4 Sep. Next: import the RDF dump through /ingestion as a signed-in HoD, run a scenario end to end, record a week of outcomes", note:"Needs a browser session against the live project" },
   { g:"p6", t:"Bug fixes & polish", s:"todo", o:"Khubaib, Adnan", d:"7d", w:"—" },
   { g:"p6", t:"UI polish & final design review", s:"todo", o:"Muniba, Adnan", d:"7d", w:"—" },
   { g:"p6", t:"FYP report writing", s:"todo", o:"All", d:"14d", w:"—" },

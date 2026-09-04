@@ -129,13 +129,13 @@ and `Docs/tracker.html` (ITEMS + API table), then republish the tracker artifact
 
 Phases A–F are implemented in the working tree: 69 backend tests pass (`pytest -q`, RLS
 suite skipped without a database), 8 Vitest tests pass, `tsc --noEmit` and `eslint` are
-clean. The two new migrations are shipped under `db/migrations/` but **not yet applied**.
+clean. The two new migrations were applied to the shared Supabase project later the same
+day, once it became reachable (PostgreSQL 17.6; 44 questions seeded, S1 tables + RLS live).
 
 ## Out of reach for this pass
 
-- Applying migrations and integration-testing against real data: the shared Supabase
-  project is unreachable from this machine (the pooler reports the tenant as not found,
-  most likely a paused project). Migrations are shipped under `db/migrations/` and are
-  idempotent.
+- Integration testing against real data: the shared Supabase project was unreachable for
+  most of the build day; migrations were applied once it came back, but the write paths
+  (scenarios, ingestion, early warning) have not yet been exercised end to end against it.
 - Phase 3 / Phase 4 milestone demos, FYP report writing, demo preparation, final
   presentation — team activities.

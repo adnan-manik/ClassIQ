@@ -647,7 +647,8 @@ LANGUAGE sql STABLE SECURITY DEFINER AS $$
   SELECT institution_id FROM auth_users WHERE id = auth.uid();
 $$;
 
-CREATE OR REPLACE FUNCTION current_role() RETURNS user_role
+-- Named get_current_role because current_role is a reserved word in Postgres.
+CREATE OR REPLACE FUNCTION get_current_role() RETURNS user_role
 LANGUAGE sql STABLE SECURITY DEFINER AS $$
   SELECT role FROM auth_users WHERE id = auth.uid();
 $$;
@@ -664,8 +665,8 @@ CREATE POLICY tenant_isolation ON <table_name>
 
 -- super_admin override
 CREATE POLICY super_admin_all ON <table_name>
-  USING (current_role() = 'super_admin')
-  WITH CHECK (current_role() = 'super_admin');
+  USING (get_current_role() = 'super_admin')
+  WITH CHECK (get_current_role() = 'super_admin');
 ```
 
 **Teacher-narrower policies** apply on `sections`, `section_students`, `student_profiles`, etc., restricting reads to sections where `teacher_id = (SELECT id FROM teachers WHERE auth_user_id = auth.uid())`.
@@ -1050,5 +1051,5 @@ without a rebuild.
 | Date | File | Change |
 |------|------|--------|
 | 2026-06-03 | `2026-06-03_drop_phd_pipeline_source.sql` | Removed `phd_pipeline` from the `response_source` enum; existing rows remapped to `form_app` (columns: `ingestion_jobs.source`, `survey_responses.source`). |
-| 2026-09-04 | `2026-09-04_seed_ils_instrument.sql` | Seeds the default FSLSM instrument (`FSLSM-ILS-Algorithms` v`27Jan24`) and its 44 questions with axis + RDF-property mapping. Generated from `backend/app/ingestion/ils_instrument.py`; the ingestion API also seeds these rows on first use. Idempotent. |
-| 2026-09-04 | `2026-09-04_early_warning.sql` | S1: adds `warning_type` / `warning_severity` / `warning_status` enums and the `section_outcomes` + `early_warning_flags` tables with RLS (§11b). Idempotent. **Not yet applied** to the shared project as of 4 Sep 2026 (project unreachable). |
+| 2026-09-04 | `2026-09-04_seed_ils_instrument.sql` | Seeds the default FSLSM instrument (`FSLSM-ILS-Algorithms` v`27Jan24`) and its 44 questions with axis + RDF-property mapping. Generated from `backend/app/ingestion/ils_instrument.py`; the ingestion API also seeds these rows on first use. Idempotent. Applied to the shared project on 4 Sep 2026. |
+| 2026-09-04 | `2026-09-04_early_warning.sql` | S1: adds `warning_type` / `warning_severity` / `warning_status` enums and the `section_outcomes` + `early_warning_flags` tables with RLS (§11b). Idempotent. Applied to the shared project on 4 Sep 2026. |

@@ -185,10 +185,10 @@ The backend mounts these routers (all under `/api` except health):
 `institution_users_import`, `institution_courses`, `institution_analytics`,
 `institution_audit`. Open <http://localhost:8000/docs> for the live OpenAPI explorer.
 
-### Pending database migrations
+### Database migrations (applied to the shared project on 4 Sep 2026)
 
-Two migrations were added on 4 Sep 2026 and must be applied to the shared Supabase
-project (idempotent, safe to re-run):
+Two migrations were added on 4 Sep 2026. They are already applied to the team's Supabase
+project; on any other database run them after the schema (idempotent, safe to re-run):
 
 ```bash
 cd db
@@ -196,8 +196,10 @@ PGPASSWORD='<db-password>' node run_migrations.mjs migrations/2026-09-04_seed_il
 ```
 
 The first seeds the 44-question ILS instrument (the ingestion API also seeds it on first
-use); the second adds the S1 `section_outcomes` / `early_warning_flags` tables — the
-early-warning endpoints return errors until it is applied.
+use); the second adds the S1 `section_outcomes` / `early_warning_flags` tables.
+
+> The RLS helper function is `get_current_role()` — `current_role` is a reserved word in
+> Postgres, so the name in older copies of the docs (`current_role()`) never parsed.
 
 ### Running the tests
 

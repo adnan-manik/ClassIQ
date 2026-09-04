@@ -471,7 +471,8 @@ LANGUAGE sql STABLE SECURITY DEFINER AS $$
   SELECT institution_id FROM auth_users WHERE id = auth.uid();
 $$;
 
-CREATE OR REPLACE FUNCTION current_role() RETURNS user_role
+-- `current_role` is a reserved word, so the helper is get_current_role().
+CREATE OR REPLACE FUNCTION get_current_role() RETURNS user_role
 LANGUAGE sql STABLE SECURITY DEFINER AS $$
   SELECT role FROM auth_users WHERE id = auth.uid();
 $$;
@@ -515,8 +516,8 @@ CREATE POLICY tenant_isolation ON institutions
   USING (id = current_institution_id())
   WITH CHECK (id = current_institution_id());
 CREATE POLICY super_admin_all ON institutions
-  USING (current_role() = 'super_admin')
-  WITH CHECK (current_role() = 'super_admin');
+  USING (get_current_role() = 'super_admin')
+  WITH CHECK (get_current_role() = 'super_admin');
 
 -- Helper macro-style: same body for every `institution_id`-bearing table
 -- (Postgres doesn't have CREATE POLICY templating, so we emit them explicitly.)
@@ -525,129 +526,129 @@ CREATE POLICY tenant_isolation ON departments
   USING (institution_id = current_institution_id())
   WITH CHECK (institution_id = current_institution_id());
 CREATE POLICY super_admin_all ON departments
-  USING (current_role() = 'super_admin')
-  WITH CHECK (current_role() = 'super_admin');
+  USING (get_current_role() = 'super_admin')
+  WITH CHECK (get_current_role() = 'super_admin');
 
 CREATE POLICY tenant_isolation ON auth_users
   USING (institution_id = current_institution_id())
   WITH CHECK (institution_id = current_institution_id());
 CREATE POLICY super_admin_all ON auth_users
-  USING (current_role() = 'super_admin')
-  WITH CHECK (current_role() = 'super_admin');
+  USING (get_current_role() = 'super_admin')
+  WITH CHECK (get_current_role() = 'super_admin');
 
 CREATE POLICY tenant_isolation ON academic_terms
   USING (institution_id = current_institution_id())
   WITH CHECK (institution_id = current_institution_id());
 CREATE POLICY super_admin_all ON academic_terms
-  USING (current_role() = 'super_admin')
-  WITH CHECK (current_role() = 'super_admin');
+  USING (get_current_role() = 'super_admin')
+  WITH CHECK (get_current_role() = 'super_admin');
 
 -- survey_instruments: institution_id may be NULL (= global default)
 CREATE POLICY tenant_or_global ON survey_instruments
   USING (institution_id IS NULL OR institution_id = current_institution_id())
   WITH CHECK (institution_id IS NULL OR institution_id = current_institution_id());
 CREATE POLICY super_admin_all ON survey_instruments
-  USING (current_role() = 'super_admin')
-  WITH CHECK (current_role() = 'super_admin');
+  USING (get_current_role() = 'super_admin')
+  WITH CHECK (get_current_role() = 'super_admin');
 
 CREATE POLICY tenant_isolation ON courses
   USING (institution_id = current_institution_id())
   WITH CHECK (institution_id = current_institution_id());
 CREATE POLICY super_admin_all ON courses
-  USING (current_role() = 'super_admin')
-  WITH CHECK (current_role() = 'super_admin');
+  USING (get_current_role() = 'super_admin')
+  WITH CHECK (get_current_role() = 'super_admin');
 
 CREATE POLICY tenant_isolation ON students
   USING (institution_id = current_institution_id())
   WITH CHECK (institution_id = current_institution_id());
 CREATE POLICY super_admin_all ON students
-  USING (current_role() = 'super_admin')
-  WITH CHECK (current_role() = 'super_admin');
+  USING (get_current_role() = 'super_admin')
+  WITH CHECK (get_current_role() = 'super_admin');
 
 CREATE POLICY tenant_isolation ON teachers
   USING (institution_id = current_institution_id())
   WITH CHECK (institution_id = current_institution_id());
 CREATE POLICY super_admin_all ON teachers
-  USING (current_role() = 'super_admin')
-  WITH CHECK (current_role() = 'super_admin');
+  USING (get_current_role() = 'super_admin')
+  WITH CHECK (get_current_role() = 'super_admin');
 
 -- scoring_configs: nullable institution_id (global default) same as instruments
 CREATE POLICY tenant_or_global ON scoring_configs
   USING (institution_id IS NULL OR institution_id = current_institution_id())
   WITH CHECK (institution_id IS NULL OR institution_id = current_institution_id());
 CREATE POLICY super_admin_all ON scoring_configs
-  USING (current_role() = 'super_admin')
-  WITH CHECK (current_role() = 'super_admin');
+  USING (get_current_role() = 'super_admin')
+  WITH CHECK (get_current_role() = 'super_admin');
 
 CREATE POLICY tenant_isolation ON ingestion_jobs
   USING (institution_id = current_institution_id())
   WITH CHECK (institution_id = current_institution_id());
 CREATE POLICY super_admin_all ON ingestion_jobs
-  USING (current_role() = 'super_admin')
-  WITH CHECK (current_role() = 'super_admin');
+  USING (get_current_role() = 'super_admin')
+  WITH CHECK (get_current_role() = 'super_admin');
 
 CREATE POLICY tenant_isolation ON audit_logs
   USING (institution_id = current_institution_id())
   WITH CHECK (institution_id = current_institution_id());
 CREATE POLICY super_admin_all ON audit_logs
-  USING (current_role() = 'super_admin')
-  WITH CHECK (current_role() = 'super_admin');
+  USING (get_current_role() = 'super_admin')
+  WITH CHECK (get_current_role() = 'super_admin');
 
 CREATE POLICY tenant_isolation ON sections
   USING (institution_id = current_institution_id())
   WITH CHECK (institution_id = current_institution_id());
 CREATE POLICY super_admin_all ON sections
-  USING (current_role() = 'super_admin')
-  WITH CHECK (current_role() = 'super_admin');
+  USING (get_current_role() = 'super_admin')
+  WITH CHECK (get_current_role() = 'super_admin');
 
 CREATE POLICY tenant_isolation ON survey_responses
   USING (institution_id = current_institution_id())
   WITH CHECK (institution_id = current_institution_id());
 CREATE POLICY super_admin_all ON survey_responses
-  USING (current_role() = 'super_admin')
-  WITH CHECK (current_role() = 'super_admin');
+  USING (get_current_role() = 'super_admin')
+  WITH CHECK (get_current_role() = 'super_admin');
 
 CREATE POLICY tenant_isolation ON student_aux_profiles
   USING (institution_id = current_institution_id())
   WITH CHECK (institution_id = current_institution_id());
 CREATE POLICY super_admin_all ON student_aux_profiles
-  USING (current_role() = 'super_admin')
-  WITH CHECK (current_role() = 'super_admin');
+  USING (get_current_role() = 'super_admin')
+  WITH CHECK (get_current_role() = 'super_admin');
 
 CREATE POLICY tenant_isolation ON teacher_profiles
   USING (institution_id = current_institution_id())
   WITH CHECK (institution_id = current_institution_id());
 CREATE POLICY super_admin_all ON teacher_profiles
-  USING (current_role() = 'super_admin')
-  WITH CHECK (current_role() = 'super_admin');
+  USING (get_current_role() = 'super_admin')
+  WITH CHECK (get_current_role() = 'super_admin');
 
 CREATE POLICY tenant_isolation ON peer_relationships
   USING (institution_id = current_institution_id())
   WITH CHECK (institution_id = current_institution_id());
 CREATE POLICY super_admin_all ON peer_relationships
-  USING (current_role() = 'super_admin')
-  WITH CHECK (current_role() = 'super_admin');
+  USING (get_current_role() = 'super_admin')
+  WITH CHECK (get_current_role() = 'super_admin');
 
 CREATE POLICY tenant_isolation ON scenarios
   USING (institution_id = current_institution_id())
   WITH CHECK (institution_id = current_institution_id());
 CREATE POLICY super_admin_all ON scenarios
-  USING (current_role() = 'super_admin')
-  WITH CHECK (current_role() = 'super_admin');
+  USING (get_current_role() = 'super_admin')
+  WITH CHECK (get_current_role() = 'super_admin');
 
 CREATE POLICY tenant_isolation ON student_profiles
   USING (institution_id = current_institution_id())
   WITH CHECK (institution_id = current_institution_id());
 CREATE POLICY super_admin_all ON student_profiles
-  USING (current_role() = 'super_admin')
-  WITH CHECK (current_role() = 'super_admin');
+  USING (get_current_role() = 'super_admin')
+  WITH CHECK (get_current_role() = 'super_admin');
 
 CREATE POLICY tenant_isolation ON simulation_runs
   USING (institution_id = current_institution_id())
   WITH CHECK (institution_id = current_institution_id());
 CREATE POLICY super_admin_all ON simulation_runs
-  USING (current_role() = 'super_admin')
-  WITH CHECK (current_role() = 'super_admin');
+  USING (get_current_role() = 'super_admin')
+  WITH CHECK (get_current_role() = 'super_admin');
 
 -- ─── Tables WITHOUT institution_id (child/join tables) ──────────────────────
 
@@ -673,8 +674,8 @@ CREATE POLICY tenant_isolation ON user_departments
       AND a.institution_id = current_institution_id()
   ));
 CREATE POLICY super_admin_all ON user_departments
-  USING (current_role() = 'super_admin')
-  WITH CHECK (current_role() = 'super_admin');
+  USING (get_current_role() = 'super_admin')
+  WITH CHECK (get_current_role() = 'super_admin');
 
 -- section_students: scoped by section's institution
 CREATE POLICY tenant_isolation ON section_students
@@ -689,8 +690,8 @@ CREATE POLICY tenant_isolation ON section_students
       AND s.institution_id = current_institution_id()
   ));
 CREATE POLICY super_admin_all ON section_students
-  USING (current_role() = 'super_admin')
-  WITH CHECK (current_role() = 'super_admin');
+  USING (get_current_role() = 'super_admin')
+  WITH CHECK (get_current_role() = 'super_admin');
 
 -- survey_questions: scoped by instrument's institution (or global)
 CREATE POLICY tenant_or_global ON survey_questions
@@ -705,8 +706,8 @@ CREATE POLICY tenant_or_global ON survey_questions
       AND (si.institution_id IS NULL OR si.institution_id = current_institution_id())
   ));
 CREATE POLICY super_admin_all ON survey_questions
-  USING (current_role() = 'super_admin')
-  WITH CHECK (current_role() = 'super_admin');
+  USING (get_current_role() = 'super_admin')
+  WITH CHECK (get_current_role() = 'super_admin');
 
 -- survey_answers: scoped by response's institution
 CREATE POLICY tenant_isolation ON survey_answers
@@ -721,8 +722,8 @@ CREATE POLICY tenant_isolation ON survey_answers
       AND r.institution_id = current_institution_id()
   ));
 CREATE POLICY super_admin_all ON survey_answers
-  USING (current_role() = 'super_admin')
-  WITH CHECK (current_role() = 'super_admin');
+  USING (get_current_role() = 'super_admin')
+  WITH CHECK (get_current_role() = 'super_admin');
 
 -- scenario_sections: scoped by scenario's institution
 CREATE POLICY tenant_isolation ON scenario_sections
@@ -737,8 +738,8 @@ CREATE POLICY tenant_isolation ON scenario_sections
       AND sc.institution_id = current_institution_id()
   ));
 CREATE POLICY super_admin_all ON scenario_sections
-  USING (current_role() = 'super_admin')
-  WITH CHECK (current_role() = 'super_admin');
+  USING (get_current_role() = 'super_admin')
+  WITH CHECK (get_current_role() = 'super_admin');
 
 -- scenario_section_students: scoped by scenario_section → scenario → institution
 CREATE POLICY tenant_isolation ON scenario_section_students
@@ -755,8 +756,8 @@ CREATE POLICY tenant_isolation ON scenario_section_students
       AND sc.institution_id = current_institution_id()
   ));
 CREATE POLICY super_admin_all ON scenario_section_students
-  USING (current_role() = 'super_admin')
-  WITH CHECK (current_role() = 'super_admin');
+  USING (get_current_role() = 'super_admin')
+  WITH CHECK (get_current_role() = 'super_admin');
 
 -- simulation_results: scoped by run's institution
 CREATE POLICY tenant_isolation ON simulation_results
@@ -771,8 +772,8 @@ CREATE POLICY tenant_isolation ON simulation_results
       AND r.institution_id = current_institution_id()
   ));
 CREATE POLICY super_admin_all ON simulation_results
-  USING (current_role() = 'super_admin')
-  WITH CHECK (current_role() = 'super_admin');
+  USING (get_current_role() = 'super_admin')
+  WITH CHECK (get_current_role() = 'super_admin');
 
 -- simulation_result_factors: scoped by result → run → institution
 CREATE POLICY tenant_isolation ON simulation_result_factors
@@ -789,8 +790,8 @@ CREATE POLICY tenant_isolation ON simulation_result_factors
       AND r.institution_id = current_institution_id()
   ));
 CREATE POLICY super_admin_all ON simulation_result_factors
-  USING (current_role() = 'super_admin')
-  WITH CHECK (current_role() = 'super_admin');
+  USING (get_current_role() = 'super_admin')
+  WITH CHECK (get_current_role() = 'super_admin');
 
 
 -- ============================================================================
@@ -849,15 +850,15 @@ CREATE POLICY tenant_isolation ON section_outcomes
   USING (institution_id = current_institution_id())
   WITH CHECK (institution_id = current_institution_id());
 CREATE POLICY super_admin_all ON section_outcomes
-  USING (current_role() = 'super_admin')
-  WITH CHECK (current_role() = 'super_admin');
+  USING (get_current_role() = 'super_admin')
+  WITH CHECK (get_current_role() = 'super_admin');
 
 CREATE POLICY tenant_isolation ON early_warning_flags
   USING (institution_id = current_institution_id())
   WITH CHECK (institution_id = current_institution_id());
 CREATE POLICY super_admin_all ON early_warning_flags
-  USING (current_role() = 'super_admin')
-  WITH CHECK (current_role() = 'super_admin');
+  USING (get_current_role() = 'super_admin')
+  WITH CHECK (get_current_role() = 'super_admin');
 
 
 COMMIT;

@@ -74,8 +74,8 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN
   CREATE POLICY super_admin_all ON section_outcomes
-    USING (current_role() = 'super_admin')
-    WITH CHECK (current_role() = 'super_admin');
+    USING (get_current_role() = 'super_admin')
+    WITH CHECK (get_current_role() = 'super_admin');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
@@ -85,8 +85,8 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN
   CREATE POLICY super_admin_all ON early_warning_flags
-    USING (current_role() = 'super_admin')
-    WITH CHECK (current_role() = 'super_admin');
+    USING (get_current_role() = 'super_admin')
+    WITH CHECK (get_current_role() = 'super_admin');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 COMMIT;
