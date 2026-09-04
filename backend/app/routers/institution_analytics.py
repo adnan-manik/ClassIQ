@@ -19,6 +19,7 @@ from app.schemas.analytics import (
     FslsmDistribution,
     InstitutionAnalyticsOverview,
     ScoreTrendPoint,
+    SimulationsByDepartment,
 )
 
 router = APIRouter(prefix="/institution/analytics", tags=["institution: analytics"])
@@ -88,3 +89,13 @@ async def score_trend(
 ) -> list[ScoreTrendPoint]:
     points = await analytics_repo.score_trend(db, actor.institution_id, weeks=weeks)
     return [ScoreTrendPoint(**p) for p in points]
+
+
+@router.get("/simulations-by-department", response_model=list[SimulationsByDepartment])
+async def simulations_by_department(
+    actor: Annotated[AuthUser, Depends(_admin_gate)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    days: int = 30,
+) -> list[SimulationsByDepartment]:
+    rows = await analytics_repo.simulations_by_department(db, actor.institution_id, days=days)
+    return [SimulationsByDepartment(**r) for r in rows]

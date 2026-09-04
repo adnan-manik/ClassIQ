@@ -1,5 +1,6 @@
 """Request + response shapes for /api/sections."""
 
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import Field
@@ -80,3 +81,26 @@ class SectionUpdate(APIModel):
 
     label: str | None = Field(default=None, min_length=1, max_length=120)
     teacher_id: UUID | None = None
+
+
+class SectionRosterUpdate(APIModel):
+    """Replace the enrolled roster. Editing a `simulated` section drops it to `draft`."""
+
+    student_ids: list[UUID] = Field(default_factory=list)
+
+
+class SimulationHistoryItem(SimulationResultShape):
+    run_id: UUID
+    created_at: datetime
+    engine_version: str | None
+
+
+class SectionReport(SectionDetail):
+    """F6 report payload — GET /api/reports/sections/{id}."""
+
+    academic_term_id: UUID
+    academic_term_name: str | None
+    department_id: UUID | None
+    department_name: str | None
+    history: list[SimulationHistoryItem]
+    generated_at: datetime

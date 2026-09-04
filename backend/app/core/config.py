@@ -21,8 +21,12 @@ class Settings(BaseSettings):
     # Database (SQLAlchemy + asyncpg)
     DATABASE_URL: str
 
-    # LLM (deferred — S2 stretch)
+    # LLM — S2 natural-language query interface (backend-only key)
     ANTHROPIC_API_KEY: str | None = None
+    ANTHROPIC_MODEL: str = "claude-opus-5"
+    LLM_MAX_OUTPUT_TOKENS: int = 4096
+    LLM_EFFORT: str = "medium"  # low | medium | high | xhigh | max
+    LLM_TIMEOUT_SECONDS: int = 120
 
     # CORS
     CORS_ORIGINS: str = "http://localhost:3000"

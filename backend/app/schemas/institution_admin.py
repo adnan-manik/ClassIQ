@@ -108,3 +108,28 @@ class UserImportResult(APIModel):
     failed: int
     status: IngestionStatus
     errors: list[UserImportPreviewError]
+
+
+# ─── Courses ────────────────────────────────────────────────────────────────
+
+class CourseCreate(APIModel):
+    code: str = Field(..., min_length=1, max_length=32)
+    name: str = Field(..., min_length=1, max_length=160)
+    # Optional — HoDs default to their own department, admins to the first one.
+    department_id: UUID | None = None
+
+
+class CoursePatch(APIModel):
+    code: str | None = Field(default=None, min_length=1, max_length=32)
+    name: str | None = Field(default=None, min_length=1, max_length=160)
+
+
+class CourseListItem(APIModel):
+    id: UUID
+    code: str
+    name: str
+    department_id: UUID
+    department_code: str | None
+    department_name: str | None
+    section_count: int = 0
+    created_at: datetime

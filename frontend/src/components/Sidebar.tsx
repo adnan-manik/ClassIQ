@@ -15,6 +15,10 @@ import {
   Network,
   Server,
   ShieldCheck,
+  Siren,
+  Sparkles,
+  TrendingUp,
+  Upload,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -28,6 +32,10 @@ const HOD_NAV = [
   { href: "/scenarios", label: "What If Scenario", icon: FlaskConical },
   { href: "/reports", label: "Simulation Report", icon: FileBarChart },
   { href: "/social-graph", label: "Social Graph", icon: Network },
+  { href: "/early-warning", label: "Early Warning", icon: Siren },
+  { href: "/longitudinal", label: "Longitudinal", icon: TrendingUp },
+  { href: "/ask", label: "Ask ClassIQ", icon: Sparkles },
+  { href: "/ingestion", label: "Survey Ingestion", icon: Upload },
 ] as const;
 
 const TEACHER_NAV = [
@@ -45,6 +53,10 @@ const INSTITUTION_ADMIN_NAV = [
   { href: "/sections", label: "Sections", icon: GitBranchPlus },
   { href: "/reports", label: "Reports", icon: FileBarChart },
   { href: "/social-graph", label: "Social Graph", icon: Network },
+  { href: "/early-warning", label: "Early Warning", icon: Siren },
+  { href: "/longitudinal", label: "Longitudinal", icon: TrendingUp },
+  { href: "/ask", label: "Ask ClassIQ", icon: Sparkles },
+  { href: "/ingestion", label: "Survey Ingestion", icon: Upload },
 ] as const;
 
 const SUPER_ADMIN_NAV = [

@@ -154,21 +154,68 @@ curl -i http://localhost:3000/            # 307 redirect to /login when unauthen
 
 ---
 
-## What works today (FYP-1 — Phases 1 & 2)
+## What works today (FYP-1 + FYP-2 build, September 2026)
 
 - **Phase 1 — Foundation:** project scaffolding, Supabase schema + multi-tenant RLS,
   JWT auth, and the institution-admin onboarding layer (super-admin → institution admin →
   departments/users).
-- **Phase 2 — Twin Generation & Profiles:** student & teacher profile models, FSLSM
-  survey ingestion, CSV bulk import, and the HoD / teacher dashboards, social graph, and
-  section builder.
+- **Phase 2 — Twin Generation & Profiles:** student & teacher profile models, the survey
+  ingestion pipeline (RDF bulk import, ClassIQ CSV, form-app JSON, manual entry — all
+  idempotent and scored into versioned profiles), CSV user import, and the HoD / teacher
+  dashboards, social graph, and section builder.
+- **Phase 3 — Scoring Engine & Section Builder:** the four-factor compatibility engine,
+  NetworkX social cohesion, section lifecycle (`draft → simulated → active → archived`),
+  roster editing, and **F5 what-if scenarios** (build, simulate, side-by-side compare
+  against the live baseline, apply to real sections).
+- **Phase 4 — Reports & Dashboards:** persisted simulation results, the report API,
+  print/PDF export, teacher dashboard, institution analytics with department drill-down.
+- **Phase 5 — Stretch goals:** **S1 early warning** (record attendance / grades per
+  week, compare with the predicted outcome, raise and manage flags), **S2 Ask ClassIQ**
+  (natural-language questions over the tenant's planning data via the Claude API,
+  backend-only key), **S3 longitudinal analytics** (profile-version history per student,
+  cohort drift per term).
+- **Phase 6 — Tests:** `pytest` suite for the engines, adapters and the auth path
+  (`backend/tests/`), an RLS-isolation test that runs when `TEST_DATABASE_URL` is set,
+  and Vitest for the frontend helpers.
 
 The backend mounts these routers (all under `/api` except health):
-`health`, `me`, `students`, `teachers`, `sections`, `admin_institutions`, `admin_system`,
-`institution_departments`, `institution_users`, `institution_users_import`,
-`institution_analytics`, `institution_audit`.
+`health`, `me`, `students`, `teachers`, `sections`, `scenarios`, `ingestion`, `reports`,
+`longitudinal` (`/analytics/longitudinal`), `early_warning`, `llm`, `admin_institutions`,
+`admin_system`, `institution_departments`, `institution_users`,
+`institution_users_import`, `institution_courses`, `institution_analytics`,
+`institution_audit`. Open <http://localhost:8000/docs> for the live OpenAPI explorer.
 
----
+### Pending database migrations
+
+Two migrations were added on 4 Sep 2026 and must be applied to the shared Supabase
+project (idempotent, safe to re-run):
+
+```bash
+cd db
+PGPASSWORD='<db-password>' node run_migrations.mjs migrations/2026-09-04_seed_ils_instrument.sql migrations/2026-09-04_early_warning.sql
+```
+
+The first seeds the 44-question ILS instrument (the ingestion API also seeds it on first
+use); the second adds the S1 `section_outcomes` / `early_warning_flags` tables — the
+early-warning endpoints return errors until it is applied.
+
+### Running the tests
+
+```bash
+# backend
+cd backend && pip install -r requirements-dev.txt && pytest -q
+# RLS isolation (needs a real DB with two institutions):
+TEST_DATABASE_URL='postgresql+asyncpg://…' pytest tests/rls -q
+
+# frontend
+cd frontend && npm test
+```
+
+### Ask ClassIQ (S2)
+
+Set `ANTHROPIC_API_KEY` in `backend/.env` (never in the frontend). Model and per-query
+output cap are `ANTHROPIC_MODEL` (default `claude-opus-5`) and `LLM_MAX_OUTPUT_TOKENS`.
+Without a key the page shows a "not configured" notice and `/api/llm/query` returns 503.
 
 ## Project layout
 
@@ -180,10 +227,12 @@ FYP-/
 │       ├── routers/      thin HTTP layer (validate + delegate)
 │       ├── services/     business logic
 │       ├── repositories/ SQLAlchemy DB access
-│       ├── engines/      pure computation (FSLSM scoring, NetworkX graph)
-│       ├── ingestion/    survey/CSV ingestion
+│       ├── engines/      pure computation (FSLSM, scoring, NetworkX, compare, early warning)
+│       ├── ingestion/    survey adapters: RDF, CSV, form-app JSON, manual entry
+│       ├── llm/          Claude API client, prompts, tenant snapshot (S2)
 │       ├── core/         config + JWT security
 │       └── deps.py       auth dependencies, current_user, DB session
+│   └── tests/        pytest: engines, ingestion adapters, auth path, RLS isolation
 ├── db/              schema.sql, migrations/, auth_trigger.sql, seed scripts
-└── Docs/            architecture, data model, use cases, timeline
+└── Docs/            architecture, data model, use cases, timeline, FYP2_IMPLEMENTATION_PLAN.md
 ```

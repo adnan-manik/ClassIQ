@@ -9,8 +9,8 @@
 ## Document Status
 
 **Brand:** ClassIQ (chosen 2026-05-11; replaces the working title "Classroom Digital Twin"). The long-form academic title above is retained as the formal project description.
-**Last updated:** 3 June 2026
-**Phase:** FYP-1 build (Phases 1–2). Core engine and dashboards are already implemented — ahead of the original phase schedule (see §18 and §21).
+**Last updated:** 4 September 2026
+**Phase:** FYP-2 build (Phases 3–6 in progress). All eight committed features and the three stretch goals are implemented; remaining work is applying migrations to the shared database, integration testing with real data, and the report / presentation (see §18 and §21).
 **Companion docs:** [BACKEND_ARCHITECTURE.md](BACKEND_ARCHITECTURE.md) · [DATA_MODEL.md](DATA_MODEL.md) · [ClassIQ-design-guide.pdf](ClassIQ-design-guide.pdf) · SQL in [`db/schema.sql`](../db/schema.sql)
 
 ### Changelog — what's changed since the proposal
@@ -26,7 +26,12 @@ The original proposal text below is preserved. These are the decisions and chang
 7. **Multi-tenancy is enforced two ways.** Frontend reads rely on Supabase **RLS**; the FastAPI backend connects with the **secret key, bypasses RLS, and scopes every query by `institution_id` in application code**.
 8. **An institution-admin layer was added** beyond the original eight features: user provisioning with **CSV bulk import** (preview → commit), department management, HoD assignment, institution analytics, and an append-only **audit log**.
 9. **Own ingestion layer.** ClassIQ collects its own surveys and builds its own ingestion path — there is no external app to integrate. An `ingestion_jobs` table models four sources (`rdf_bulk_import`, `form_app`, `classiq_internal`, `manual_admin`) that all converge on one internal schema. The FSLSM model and teaching content recommendations come from **Mr. Mubassher** (external); ClassIQ builds no content-recommendation engine.
-10. **Actual tech stack pinned** (§13): Next.js 16.2.6 / React 19 / Tailwind 4 / TypeScript 5 on the front end; Python + FastAPI / SQLAlchemy 2 (async) + asyncpg / NetworkX 3.4 / python-jose on the back end. The social graph is rendered with a **custom dependency-free SVG force layout** (not React Flow/D3); charts use **Recharts**; report export uses the **browser print pipeline** (Save as PDF). The LLM dependency is deferred (commented out) until the S2 stretch goal.
+10. **Actual tech stack pinned** (§13): Next.js 16.2.6 / React 19 / Tailwind 4 / TypeScript 5 on the front end; Python + FastAPI / SQLAlchemy 2 (async) + asyncpg / NetworkX 3.4 / python-jose on the back end. The social graph is rendered with a **custom dependency-free SVG force layout** (not React Flow/D3); charts use **Recharts**; report export uses the **browser print pipeline** (Save as PDF).
+11. **F5 what-if scenarios are complete (4 Sep 2026).** `POST/GET/PATCH/DELETE /api/scenarios`, `/simulate`, `/compare` (side-by-side vs the live baseline with per-factor deltas and roster diffs) and `/apply` (copies the scenario onto real sections and re-scores them). The scenarios page has a builder that can start from any live section.
+12. **Own ingestion pipeline built.** `backend/app/ingestion/` holds the RDF, CSV, form-app and manual adapters; `services/ingestion_service.py` validates, resolves students, stores raw answers, scores FSLSM and writes a new profile version, with per-row savepoints and idempotency on `external_response_id`. The repo's RDF dump (176 students) parses cleanly end to end; `/ingestion` page for HoD / admins.
+13. **Section lifecycle and roster editing.** `activate` / `archive` / `reopen` / `delete` endpoints implement the §7 state machine; `PUT /sections/{id}/students` replaces the roster. Course creation now goes through `POST /api/institution/courses` (audited) instead of a direct Supabase insert.
+14. **Stretch goals implemented.** S1 early warning (`section_outcomes`, `early_warning_flags`, pure comparator, teacher data entry, HoD flag triage), S2 Ask ClassIQ (Claude API via the official SDK, backend-only key, cached system prompt + tenant snapshot, per-query token cap, refusal-aware), S3 longitudinal analytics (profile-history per student, cohort drift per term / version).
+15. **Automated tests exist.** `backend/tests/` (pytest: engines, adapters, auth path, RLS isolation when a test DB is present) and `frontend/src/**/*.test.ts` (Vitest). See [FYP2_IMPLEMENTATION_PLAN.md](FYP2_IMPLEMENTATION_PLAN.md) for the phase plan that drove this.
 
 ---
 
@@ -53,7 +58,7 @@ The original proposal text below is preserved. These are the decisions and chang
 18. [Project Timeline](#18-project-timeline)
 19. [Important Caveats](#19-important-caveats)
 20. [Repository Structure & Companion Docs](#20-repository-structure--companion-docs)
-21. [Current Implementation Status (June 2026)](#21-current-implementation-status-june-2026)
+21. [Current Implementation Status (September 2026)](#21-current-implementation-status-september-2026)
 22. [References](#22-references)
 
 ---
@@ -200,12 +205,13 @@ The primary HoD workspace:
 - **Section states:** Draft (being configured) → Simulated (report generated) → Active (semester live) → Archived
 - Entry point for triggering simulations (`POST /api/sections/{id}/simulate`)
 
-### F5: What-If Scenario Testing — **partial**
+### F5: What-If Scenario Testing — **implemented**
 The feature that makes this a **decision-support tool**:
 
-- Compare section configurations and their simulation results **side by side** — compatibility scores, style breakdowns, predicted outcomes
-- The live baseline ("current assignment") renders from real simulation results; the **create/save named-scenario flow is still a stub** (UI present, backend endpoint pending)
-- **Expected centrepiece of the FYP live demonstration**
+- Compose named scenarios (one or more hypothetical sections: course, label, teacher, roster), optionally starting from a live section
+- Run the same scoring engine on every scenario section; compare each against the live baseline **side by side** — compatibility score, per-factor deltas, roster changes, predicted outcomes
+- Apply a winning scenario onto the real sections (audited, re-scored immediately)
+- **Centrepiece of the FYP live demonstration**
 
 ### F6: Simulation Report — **implemented**
 Per-section output after simulation:
@@ -240,21 +246,21 @@ Built from the start (not retrofitted):
 
 Built only if core features are complete ahead of schedule.
 
-### S1: Early Warning System
+### S1: Early Warning System — **implemented**
 - Once semester is active, admins/teachers enter real data (attendance, grades)
 - System compares against predicted learning outcomes
 - **Automatic flags** raised if actual performance diverges significantly below prediction
 - Flags categorized by type (engagement, performance, compatibility) and severity (low, medium, high)
 - Closes the feedback loop between prediction and reality
 
-### S2: Natural Language AI Query Interface
-- LLM-powered (Claude API / OpenAI API). *The `anthropic` dependency is currently commented out in `requirements.txt` and will be enabled when this stretch goal is picked up.*
+### S2: Natural Language AI Query Interface — **implemented ("Ask ClassIQ")**
+- LLM-powered via the Claude API (official `anthropic` SDK, default model `claude-opus-5`, configurable). The backend builds a tenant-scoped JSON snapshot (sections, results, teachers, scenarios, FSLSM distribution — names only, no emails) and sends it as a cached system block; answers are capped per query and logged to the audit trail.
 - HoDs ask plain English questions: *"Which teacher is best for the evening section of CS101?"*
 - System processes query using platform data, returns natural language response with recommendation + reasoning
 - API call from backend (keys never exposed to client)
 - Lowers barrier for non-technical administrators
 
-### S3: Longitudinal Analytics
+### S3: Longitudinal Analytics — **implemented**
 - Leverages versioned student profiles (`is_current` / `version`)
 - Timeline view showing how FSLSM scores shift across semesters
 - Accessible to HoDs for planning
@@ -673,34 +679,38 @@ D:\FYP-
 
 ---
 
-## 21. Current Implementation Status (June 2026)
+## 21. Current Implementation Status (September 2026)
 
 | Area | Status | Where it lives |
 |------|--------|----------------|
 | FSLSM scorer (4 axes, −11…+11, 44-Q ILS) | ✅ Done | `backend/app/engines/fslsm/scorer.py` |
 | Compatibility engine (4 weighted factors → 0–100) | ✅ Done | `backend/app/engines/scoring/` (`pipeline`, `style_alignment`, `social_cohesion`, `class_balance`, `participation`) |
 | Social graph metrics (NetworkX) | ✅ Done | `backend/app/engines/graph/networkx_builder.py` |
-| Section simulation + persisted results | ✅ Done | `POST /api/sections/{id}/simulate` |
+| Section simulation + persisted results | ✅ Done | `POST /api/sections/{id}/simulate` (shared `score_roster` path with scenarios) |
+| Section lifecycle (activate / archive / reopen / delete) + roster editing | ✅ Done | `routers/sections.py`, `repositories/sections.py`, Section Builder buttons |
+| What-if scenarios (build, simulate, compare, apply) | ✅ Done | `routers/scenarios.py`, `services/scenario_service.py`, `engines/scenario_compare.py`, `scenarios/ScenariosView.tsx` |
 | Auth (Supabase JWT: HS256 + JWKS) | ✅ Done | `backend/app/core/security.py`, `deps.py` |
-| Multi-tenancy (RLS + app-level `institution_id`) | ✅ Done | backend repositories; Supabase RLS |
+| Multi-tenancy (RLS + app-level `institution_id`) | ✅ Done | backend repositories + `repositories/refs.py`; Supabase RLS |
 | Profile versioning (`is_current` / `version`) | ✅ Done | `student_profiles`, `teacher_profiles` |
+| Survey ingestion (RDF / CSV / form-app / manual) | ✅ Done | `backend/app/ingestion/`, `services/ingestion_service.py`, `routers/ingestion.py`, `/ingestion` page |
 | Institution onboarding (super-admin) | ✅ Done | `/api/admin/institutions`, `/admin/*` |
 | User provisioning + CSV import (preview→commit) | ✅ Done | `institution_users_import`, `csv_import.py`, papaparse |
 | Department management + HoD assignment | ✅ Done | `institution_departments`, admin pages |
-| Audit log (append-only) | ✅ Done | `audit_logs`, `services/audit.py` |
+| Course catalogue (audited) | ✅ Done | `routers/institution_courses.py`; Section Builder "New Course" |
+| Audit log (append-only) | ✅ Done | `audit_logs`, `services/audit.py` — every mutation writes a row |
 | HoD dashboard / students / teachers / sections | ✅ Done | `frontend/src/app/(dashboard)/*` (Supabase-direct reads) |
-| Section Builder (create/update/simulate) | ✅ Done | `sections/` + `lib/api.ts` |
-| Simulation Reports + print/PDF export | ✅ Done | `reports/`, `ReportActions.tsx` |
-| Teacher Dashboard (read-only) | ✅ Done | `teacher-dashboard/page.tsx` |
+| Simulation Reports + print/PDF export + report API | ✅ Done | `reports/`, `ReportActions.tsx`, `GET /api/reports/sections/{id}` |
+| Teacher Dashboard (read-only + S1 data entry) | ✅ Done | `teacher-dashboard/page.tsx`, `components/OutcomeEntry.tsx` |
 | Social graph view (custom SVG) | ✅ Done | `social-graph/SocialGraphView.tsx` |
-| Institution analytics | 🟡 Partial | `institution_analytics`, `/admin/analytics` |
-| What-if: save named scenario | 🟡 Stub | `scenarios/` (UI present, backend endpoint pending) |
-| Data ingestion (RDF / form / manual) | 🟡 Modelled | `ingestion_jobs` table + sources; processor pending |
-| LLM / NL query (S2) | ⬜ Deferred | dependency commented out in `requirements.txt` |
-| Early warning (S1) / Longitudinal (S3) | ⬜ Not started | stretch goals |
-| Automated tests (Pytest / Vitest) | ⬜ Not started | planned |
+| Institution analytics (+ department drill-down, simulations by department) | ✅ Done | `institution_analytics`, `/admin/analytics`, `AnalyticsDrilldown.tsx` |
+| S1 Early warning | ✅ Done (migration pending) | `db/migrations/2026-09-04_early_warning.sql`, `engines/early_warning.py`, `routers/early_warning.py`, `/early-warning` |
+| S2 Ask ClassIQ (NL query) | ✅ Done (needs `ANTHROPIC_API_KEY`) | `backend/app/llm/`, `routers/llm.py`, `/ask` |
+| S3 Longitudinal analytics | ✅ Done | `routers/longitudinal.py`, `/api/students/{id}/profile-history`, `/longitudinal`, `components/ProfileHistory.tsx` |
+| Automated tests (pytest / Vitest) | ✅ Done | `backend/tests/` (69 tests; RLS suite skips without `TEST_DATABASE_URL`), `frontend/src/lib/stats.test.ts` |
+| Migrations applied to the shared Supabase project | ⬜ Pending | `db/migrations/2026-09-04_*.sql` — project was unreachable on 4 Sep 2026 |
+| Integration testing with real data, report, presentation | ⬜ Pending | Phase 6 team activities |
 
-Legend: ✅ implemented · 🟡 partial/stub · ⬜ not started/deferred.
+Legend: ✅ implemented · 🟡 partial/stub · ⬜ not started/pending.
 
 ---
 

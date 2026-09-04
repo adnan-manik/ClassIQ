@@ -12,13 +12,20 @@ from app.core.security import _get_jwks  # noqa: F401 — pre-warm JWKS on impor
 from app.routers import (
     admin_institutions,
     admin_system,
+    early_warning,
     health,
+    ingestion,
     institution_analytics,
     institution_audit,
+    institution_courses,
     institution_departments,
     institution_users,
     institution_users_import,
+    llm,
+    longitudinal,
     me,
+    reports,
+    scenarios,
     sections,
     students,
     teachers,
@@ -52,6 +59,12 @@ def create_app() -> FastAPI:
     app.include_router(students.router, prefix="/api")
     app.include_router(teachers.router, prefix="/api")
     app.include_router(sections.router, prefix="/api")
+    app.include_router(scenarios.router, prefix="/api")
+    app.include_router(ingestion.router, prefix="/api")
+    app.include_router(reports.router, prefix="/api")
+    app.include_router(longitudinal.router, prefix="/api")
+    app.include_router(early_warning.router, prefix="/api")
+    app.include_router(llm.router, prefix="/api")
 
     # Super Admin (platform-wide)
     app.include_router(admin_institutions.router, prefix="/api")
@@ -63,6 +76,7 @@ def create_app() -> FastAPI:
     app.include_router(institution_users_import.router, prefix="/api")
     app.include_router(institution_analytics.router, prefix="/api")
     app.include_router(institution_audit.router, prefix="/api")
+    app.include_router(institution_courses.router, prefix="/api")
 
     return app
 

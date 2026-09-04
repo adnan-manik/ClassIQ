@@ -1,4 +1,11 @@
 from app.models.audit_log import AuditLog
+from app.models.early_warning import (
+    EarlyWarningFlag,
+    SectionOutcome,
+    WarningSeverity,
+    WarningStatus,
+    WarningType,
+)
 from app.models.auth_user import AuthUser, UserRole
 from app.models.ingestion_job import IngestionJob, IngestionStatus, ResponseSource
 from app.models.institution import (
@@ -11,6 +18,12 @@ from app.models.peer_relationship import (
     PeerRelationship,
     RelationshipSource,
     RelationshipType,
+)
+from app.models.scenario import (
+    Scenario,
+    ScenarioSection,
+    ScenarioSectionStudent,
+    ScenarioStatus,
 )
 from app.models.section import Section, SectionState, SectionStudent
 from app.models.simulation import (
@@ -30,6 +43,15 @@ from app.models.student import (
     StudentAuxProfile,
     StudentProfile,
 )
+from app.models.survey import (
+    AnswerChoice,
+    FslsmPoleA,
+    FslsmPoleB,
+    SurveyAnswer,
+    SurveyInstrument,
+    SurveyQuestion,
+    SurveyResponse,
+)
 from app.models.teacher import (
     InteractionLevel,
     PacingPref,
@@ -42,6 +64,11 @@ __all__ = [
     "AcademicTerm",
     "AuditLog",
     "AuthUser",
+    "EarlyWarningFlag",
+    "SectionOutcome",
+    "WarningSeverity",
+    "WarningStatus",
+    "WarningType",
     "CollabPref",
     "Course",
     "Department",
@@ -58,6 +85,10 @@ __all__ = [
     "RelationshipSource",
     "RelationshipType",
     "ResponseSource",
+    "Scenario",
+    "ScenarioSection",
+    "ScenarioSectionStudent",
+    "ScenarioStatus",
     "Section",
     "SectionState",
     "SectionStudent",
@@ -69,6 +100,13 @@ __all__ = [
     "Student",
     "StudentAuxProfile",
     "StudentProfile",
+    "SurveyAnswer",
+    "SurveyInstrument",
+    "SurveyQuestion",
+    "SurveyResponse",
+    "AnswerChoice",
+    "FslsmPoleA",
+    "FslsmPoleB",
     "Teacher",
     "TeacherProfile",
     "UserDepartment",

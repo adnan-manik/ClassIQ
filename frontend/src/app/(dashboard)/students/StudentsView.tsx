@@ -5,6 +5,7 @@ import CreateStudentModal from "@/components/CreateStudentModal";
 import EmptyState from "@/components/EmptyState";
 import FslsmBars from "@/components/FslsmBars";
 import LearningStyleCard from "@/components/LearningStyleCard";
+import ProfileHistory from "@/components/ProfileHistory";
 import { BRAND } from "@/lib/brand";
 import {
   FSLSM_AXES,
@@ -551,6 +552,9 @@ function StudentDetail({
             survey produces a new version while preserving history.
           </div>
         )}
+
+        {/* S3 — versioned profile history */}
+        <ProfileHistory studentId={student.id} />
 
         {/* Aux profile */}
         {student.aux && (

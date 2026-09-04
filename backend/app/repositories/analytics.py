@@ -239,3 +239,43 @@ async def score_trend(
         }
         for r in rows
     ]
+
+
+async def simulations_by_department(
+    db: AsyncSession, institution_id: UUID, *, days: int = 30
+) -> list[dict]:
+    """Runs in the last N days + average score, per department (via section → course)."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    depts = list(
+        (
+            await db.execute(
+                select(Department)
+                .where(Department.institution_id == institution_id)
+                .where(Department.deleted_at.is_(None))
+                .order_by(Department.name)
+            )
+        ).scalars().all()
+    )
+    out: list[dict] = []
+    for d in depts:
+        stmt = (
+            select(func.count(SimulationResult.id), func.avg(SimulationResult.compatibility_score))
+            .select_from(SimulationResult)
+            .join(SimulationRun, SimulationRun.id == SimulationResult.simulation_run_id)
+            .join(Section, Section.id == SimulationResult.section_id)
+            .join(Course, Course.id == Section.course_id)
+            .where(SimulationRun.institution_id == institution_id)
+            .where(Course.department_id == d.id)
+            .where(SimulationResult.created_at >= cutoff)
+        )
+        row = (await db.execute(stmt)).first()
+        out.append(
+            {
+                "department_id": d.id,
+                "department_name": d.name,
+                "department_code": d.code,
+                "runs_last_30d": int(row[0] or 0) if row else 0,
+                "avg_score": float(row[1]) if row and row[1] is not None else None,
+            }
+        )
+    return out

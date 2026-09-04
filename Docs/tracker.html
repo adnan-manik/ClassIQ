@@ -1,0 +1,1145 @@
+<title>ClassIQ Build Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+/* ─── Tokens: light is the base set ─────────────────────────────── */
+:root {
+  --page:#F2FFFE; --surface:#FFFFFF; --surface-2:#ECFDFA; --surface-3:#E9FFFD;
+  --border:#E2E8F0; --border-strong:#CBD5E1;
+  --rail:#0D9488; --rail-edge:#0B8278; --rail-text:#FFFFFF; --rail-muted:#B2E5DD;
+  --rail-hover:#0B8278; --rail-active-bg:#F2FFFE; --rail-active-text:#0D9488;
+  --text:#0F172A; --text-muted:#64748B; --text-subtle:#94A3B8;
+  --heading:#0F766E; --accent:#0D9488; --accent-soft:#CCFBF1;
+  --purple:#3E2F7E; --purple-soft:#EDE9FE; --purple-ink:#3E2F7E;
+  --ok:#16A34A;   --ok-bg:#DCFCE7;
+  --warn:#B45309; --warn-bg:#FEF3C7;
+  --risk:#DC2626; --risk-bg:#FEE2E2;
+  --idle:#64748B; --idle-bg:#F1F5F9;
+  --defer:#4F46E5;--defer-bg:#E0E7FF;
+  --on-accent:#FFFFFF; --on-status:#FFFFFF;
+  --shadow:0 1px 2px rgba(15,23,42,.05), 0 8px 24px -16px rgba(15,23,42,.25);
+  --radius:14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page:#131029; --surface:#1B1739; --surface-2:#221D46; --surface-3:#2A2454;
+    --border:#342D63; --border-strong:#453D82;
+    --rail:#0E7A70; --rail-edge:#0A5F58; --rail-text:#FFFFFF; --rail-muted:#9FD8D1;
+    --rail-hover:#0A5F58; --rail-active-bg:#131029; --rail-active-text:#5EEAD4;
+    --text:#EDEAFB; --text-muted:#A79FD0; --text-subtle:#7E76A8;
+    --heading:#5EEAD4; --accent:#2DD4BF; --accent-soft:#123F3B;
+    --purple:#A99BE8; --purple-soft:#2A2454; --purple-ink:#C9BDF5;
+    --ok:#4ADE80;   --ok-bg:#123522;
+    --warn:#FBBF24; --warn-bg:#3A2B0B;
+    --risk:#FB8A82; --risk-bg:#3B1D1D;
+    --idle:#A79FD0; --idle-bg:#262046;
+    --defer:#A5A0F5;--defer-bg:#241F4E;
+    --on-accent:#08201E; --on-status:#131029;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.8);
+  }
+}
+:root[data-theme="dark"] {
+  --page:#131029; --surface:#1B1739; --surface-2:#221D46; --surface-3:#2A2454;
+  --border:#342D63; --border-strong:#453D82;
+  --rail:#0E7A70; --rail-edge:#0A5F58; --rail-text:#FFFFFF; --rail-muted:#9FD8D1;
+  --rail-hover:#0A5F58; --rail-active-bg:#131029; --rail-active-text:#5EEAD4;
+  --text:#EDEAFB; --text-muted:#A79FD0; --text-subtle:#7E76A8;
+  --heading:#5EEAD4; --accent:#2DD4BF; --accent-soft:#123F3B;
+  --purple:#A99BE8; --purple-soft:#2A2454; --purple-ink:#C9BDF5;
+  --ok:#4ADE80;   --ok-bg:#123522;
+  --warn:#FBBF24; --warn-bg:#3A2B0B;
+  --risk:#FB8A82; --risk-bg:#3B1D1D;
+  --idle:#A79FD0; --idle-bg:#262046;
+  --defer:#A5A0F5;--defer-bg:#241F4E;
+  --on-accent:#08201E; --on-status:#131029;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.8);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+body {
+  margin:0; background:var(--page); color:var(--text);
+  font-family:"IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4 { font-family:"Archivo", "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  text-wrap:balance; margin:0; letter-spacing:-.015em; }
+code, .mono, .num { font-family:"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+.num { font-variant-numeric: tabular-nums; }
+a { color:var(--accent); }
+:focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
+
+/* ─── Shell ─────────────────────────────────────────────────────── */
+.shell { display:grid; grid-template-columns:238px minmax(0,1fr); min-height:100vh; }
+
+.rail {
+  background:var(--rail); color:var(--rail-text); border-right:1px solid var(--rail-edge);
+  position:sticky; top:0; height:100vh; overflow-y:auto;
+  display:flex; flex-direction:column; gap:22px; padding:22px 0 22px 16px;
+}
+.brand { display:flex; flex-direction:column; gap:2px; padding-right:16px; }
+.brand-mark { font-family:"Archivo",sans-serif; font-weight:700; font-size:20px; letter-spacing:-.02em; }
+.brand-sub { font-size:11px; letter-spacing:.13em; text-transform:uppercase; color:var(--rail-muted); }
+.rail nav { display:flex; flex-direction:column; gap:1px; }
+.rail nav a {
+  display:flex; align-items:center; gap:10px; padding:9px 14px;
+  border-radius:999px 0 0 999px; color:var(--rail-muted); text-decoration:none;
+  font-size:13.5px; font-weight:500; transition:background .15s, color .15s;
+}
+.rail nav a:hover { background:var(--rail-hover); color:#fff; }
+.rail nav a.on { background:var(--rail-active-bg); color:var(--rail-active-text); font-weight:600; }
+.rail nav a .tick { width:5px; height:5px; border-radius:50%; background:currentColor; opacity:.55; flex:none; }
+
+.legend { padding-right:16px; display:flex; flex-direction:column; gap:7px; margin-top:auto; }
+.legend h4 { font-size:10.5px; letter-spacing:.13em; text-transform:uppercase; color:var(--rail-muted); font-weight:600; }
+.legend-row { display:flex; align-items:center; gap:8px; font-size:12px; color:#fff; }
+.legend-row .sw { width:9px; height:9px; border-radius:3px; flex:none; }
+.sync { padding-right:16px; font-size:11px; color:var(--rail-muted); line-height:1.5; }
+.sync b { color:#fff; font-weight:600; }
+
+main { padding:36px 40px 80px; max-width:1220px; }
+section[id] { scroll-margin-top:20px; }
+.stack { display:flex; flex-direction:column; gap:56px; }
+.sec-head { display:flex; flex-direction:column; gap:6px; margin-bottom:18px; }
+.eyebrow { font-size:10.5px; letter-spacing:.15em; text-transform:uppercase; color:var(--text-subtle); font-weight:600; }
+h2 { font-size:24px; font-weight:700; color:var(--heading); }
+.sec-head p { margin:0; color:var(--text-muted); font-size:14px; max-width:66ch; }
+
+.card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); }
+
+/* ─── Pulse ─────────────────────────────────────────────────────── */
+.pulse-head { display:flex; flex-direction:column; gap:10px; margin-bottom:26px; }
+.pulse-head h1 { font-size:31px; font-weight:700; color:var(--text); }
+.pulse-head .lede { color:var(--text-muted); font-size:15.5px; max-width:70ch; margin:0; }
+.pulse-head .lede strong { color:var(--text); font-weight:600; }
+
+.tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(178px,1fr)); gap:14px; }
+.tile { padding:16px 18px; display:flex; flex-direction:column; gap:5px; }
+.tile .k { font-size:10.5px; letter-spacing:.11em; text-transform:uppercase; color:var(--text-subtle); font-weight:600; }
+.tile .v { font-family:"Archivo",sans-serif; font-size:29px; font-weight:700; line-height:1.05; font-variant-numeric:tabular-nums; }
+.tile .n { font-size:12.5px; color:var(--text-muted); }
+.tile.flag { border-left:3px solid var(--warn); }
+
+.bar { height:7px; border-radius:99px; background:var(--idle-bg); overflow:hidden; display:flex; }
+.bar span { display:block; height:100%; }
+
+.attention { margin-top:26px; padding:20px 22px; display:flex; flex-direction:column; gap:14px; }
+.attention h3 { font-size:15px; font-weight:600; color:var(--text); display:flex; align-items:center; gap:9px; }
+.attention h3::before { content:""; width:8px; height:8px; border-radius:2px; background:var(--warn); }
+.att-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:2px; }
+.att-list li { display:grid; grid-template-columns:4px 1fr; gap:14px; padding:11px 0; border-top:1px solid var(--border); }
+.att-list li:first-child { border-top:none; }
+.att-list .stripe { border-radius:99px; }
+.att-list .t { font-weight:600; font-size:14px; }
+.att-list .d { font-size:13px; color:var(--text-muted); }
+.att-list .d code { font-size:12px; background:var(--surface-2); padding:1px 5px; border-radius:4px; color:var(--text); }
+
+/* ─── Toolbar + Board ───────────────────────────────────────────── */
+.toolbar { display:flex; flex-wrap:wrap; gap:18px; align-items:center; padding:13px 16px; margin-bottom:18px; }
+.fgroup { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.fgroup > .lab { font-size:10.5px; letter-spacing:.11em; text-transform:uppercase; color:var(--text-subtle); font-weight:600; }
+.chip {
+  font:inherit; font-size:12.5px; font-weight:500; cursor:pointer;
+  padding:5px 12px; border-radius:99px; border:1px solid var(--border-strong);
+  background:transparent; color:var(--text-muted); transition:.15s;
+}
+.chip:hover { border-color:var(--accent); color:var(--accent); }
+.chip[aria-pressed="true"] { background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
+.count-out { margin-left:auto; font-size:12.5px; color:var(--text-muted); font-variant-numeric:tabular-nums; }
+
+.board { display:grid; grid-template-columns:repeat(5,minmax(196px,1fr)); gap:12px; overflow-x:auto; padding-bottom:6px; }
+.col { background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius); display:flex; flex-direction:column; min-width:196px; }
+.col-head { padding:11px 13px 9px; display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--border); }
+.col-head .sw { width:9px; height:9px; border-radius:3px; flex:none; }
+.col-head .nm { font-size:12px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; }
+.col-head .ct { margin-left:auto; font-size:12px; color:var(--text-muted); font-variant-numeric:tabular-nums; }
+.col-body { padding:10px; display:flex; flex-direction:column; gap:8px; }
+.tk { background:var(--surface); border:1px solid var(--border); border-radius:9px; padding:10px 11px; display:flex; flex-direction:column; gap:7px; }
+.tk .tk-t { font-size:13px; font-weight:500; line-height:1.35; }
+.tk .tk-m { display:flex; align-items:center; gap:7px; flex-wrap:wrap; font-size:11px; color:var(--text-muted); }
+.pill { font-size:10.5px; font-weight:600; padding:2px 7px; border-radius:5px; letter-spacing:.03em; }
+.pill.ph { background:var(--purple-soft); color:var(--purple-ink); }
+.pill.own { background:var(--accent-soft); color:var(--heading); }
+.tk .tk-w { font-size:11px; color:var(--text-subtle); word-break:break-word; }
+.col-empty { font-size:12px; color:var(--text-subtle); padding:8px 2px; }
+
+/* ─── Timeline ──────────────────────────────────────────────────── */
+.gantt { padding:22px; display:flex; flex-direction:column; gap:0; overflow-x:auto; }
+.gantt-inner { min-width:660px; }
+.months { position:relative; height:20px; border-bottom:1px solid var(--border); margin-bottom:14px; margin-left:158px; }
+.months i { position:absolute; top:0; font-size:11px; font-style:normal; color:var(--text-subtle);
+  font-weight:600; letter-spacing:.05em; text-transform:uppercase; padding-left:4px;
+  border-left:1px solid var(--border); height:20px; }
+.track { position:relative; height:32px; }
+.track .lbl { position:absolute; left:0; top:7px; font-size:12px; font-weight:600; width:150px; }
+.track .lane { position:absolute; left:158px; right:0; top:0; height:32px; }
+.gbar { position:absolute; top:5px; height:20px; border-radius:6px; display:flex; align-items:center;
+  padding:0 9px; font-size:11px; font-weight:600; color:var(--on-status); white-space:nowrap; overflow:hidden; }
+.gbar.hollow { background:var(--surface-2); border:1px dashed var(--border-strong); color:var(--text-muted); }
+.today { position:absolute; top:0; bottom:0; width:2px; background:var(--risk); z-index:3; }
+.today .tlab { position:absolute; top:-17px; left:50%; transform:translateX(-50%);
+  font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--risk); }
+.commits { position:relative; height:40px; margin-top:10px; padding-top:10px; border-top:1px solid var(--border); }
+.commits .lbl { position:absolute; left:0; top:19px; font-size:12px; font-weight:600; width:150px; }
+.commits .lane { position:absolute; left:158px; right:0; top:10px; height:30px; }
+.cdot { position:absolute; top:11px; width:8px; height:8px; border-radius:50%; background:var(--accent);
+  transform:translateX(-50%); border:1.5px solid var(--surface); }
+.cdot.big { top:6px; width:18px; height:18px; display:flex; align-items:center; justify-content:center; }
+.cdot.big b { font-family:"IBM Plex Mono",monospace; font-size:10px; font-weight:500; color:var(--on-accent); }
+.gapmark { position:absolute; top:8px; height:14px; border-top:1px dashed var(--border-strong);
+  display:flex; align-items:center; justify-content:center; }
+.gapmark span { font-size:10px; color:var(--text-subtle); background:var(--surface); padding:0 6px; white-space:nowrap; }
+
+/* ─── WBS table ─────────────────────────────────────────────────── */
+.tbl-wrap { overflow-x:auto; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); box-shadow:var(--shadow); }
+table.wbs { border-collapse:collapse; width:100%; min-width:880px; font-size:13.5px; }
+table.wbs th { text-align:left; font-size:10.5px; letter-spacing:.11em; text-transform:uppercase;
+  color:var(--text-subtle); font-weight:600; padding:11px 14px; border-bottom:1px solid var(--border); background:var(--surface-2); }
+table.wbs td { padding:11px 14px; border-bottom:1px solid var(--border); vertical-align:top; }
+table.wbs tr:last-child td { border-bottom:none; }
+table.wbs tr.grp td { background:var(--surface-3); font-family:"Archivo",sans-serif; font-weight:700; font-size:13px;
+  color:var(--heading); letter-spacing:.02em; }
+table.wbs tr.grp .gmeta { float:right; font-family:"IBM Plex Mono",monospace; font-weight:400; font-size:11.5px;
+  color:var(--text-muted); font-variant-numeric:tabular-nums; }
+.st { display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:600;
+  padding:3px 9px; border-radius:99px; white-space:nowrap; }
+.st .sw { width:7px; height:7px; border-radius:2px; flex:none; }
+td.w { font-family:"IBM Plex Mono",monospace; font-size:11.5px; color:var(--text-muted); word-break:break-word; }
+td.d { font-variant-numeric:tabular-nums; color:var(--text-muted); white-space:nowrap; }
+td.o { white-space:nowrap; color:var(--text-muted); font-size:12.5px; }
+.note { display:block; margin-top:5px; font-size:11.5px; color:var(--warn); font-family:"IBM Plex Sans",sans-serif; }
+
+/* ─── Model ─────────────────────────────────────────────────────── */
+.two { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:18px; }
+.panel { padding:20px 22px; display:flex; flex-direction:column; gap:16px; }
+.panel h3 { font-size:15.5px; font-weight:600; color:var(--text); }
+.panel .sub { font-size:12.5px; color:var(--text-muted); margin:-11px 0 0; }
+
+.axis { display:flex; flex-direction:column; gap:11px; }
+.ax { display:flex; flex-direction:column; gap:4px; }
+.ax .ends { display:flex; justify-content:space-between; font-size:12px; }
+.ax .ends b { font-weight:600; }
+.ax .ends .neg { color:var(--purple); }
+.ax .ends .pos { color:var(--heading); }
+.ax .scale { position:relative; height:8px; border-radius:99px;
+  background:linear-gradient(90deg, var(--purple-soft), var(--surface-2), var(--accent-soft)); }
+.ax .scale::after { content:""; position:absolute; left:50%; top:-3px; bottom:-3px; width:1px; background:var(--border-strong); }
+.ticks { display:flex; justify-content:space-between; font-size:10px; color:var(--text-subtle); font-variant-numeric:tabular-nums; }
+
+.wts { display:flex; flex-direction:column; gap:13px; }
+.wt { display:grid; grid-template-columns:1fr auto; gap:3px 12px; align-items:baseline; }
+.wt .n { font-size:13.5px; font-weight:600; }
+.wt .v { font-family:"IBM Plex Mono",monospace; font-size:13px; font-variant-numeric:tabular-nums; color:var(--heading); }
+.wt .b { grid-column:1/-1; height:8px; border-radius:99px; background:var(--surface-2); overflow:hidden; }
+.wt .b i { display:block; height:100%; border-radius:99px; }
+.wt .c { grid-column:1/-1; font-size:11.5px; color:var(--text-muted); }
+.outcome { display:flex; gap:8px; flex-wrap:wrap; padding-top:14px; border-top:1px solid var(--border); }
+.oc { flex:1; min-width:92px; padding:9px 11px; border-radius:9px; background:var(--surface-2); display:flex; flex-direction:column; gap:1px; }
+.oc .r { font-family:"IBM Plex Mono",monospace; font-size:12px; font-variant-numeric:tabular-nums; }
+.oc .l { font-size:12.5px; font-weight:600; }
+
+.groups { display:grid; grid-template-columns:repeat(auto-fit,minmax(238px,1fr)); gap:12px; }
+.grp-card { border:1px solid var(--border); border-radius:11px; padding:13px 14px; background:var(--surface-2);
+  display:flex; flex-direction:column; gap:9px; }
+.grp-card .gh { display:flex; align-items:baseline; gap:8px; }
+.grp-card .gl { font-family:"Archivo",sans-serif; font-weight:700; font-size:11px; letter-spacing:.1em; color:var(--accent); }
+.grp-card .gn { font-size:13px; font-weight:600; }
+.grp-card .gc { margin-left:auto; font-size:11px; color:var(--text-subtle); font-variant-numeric:tabular-nums; }
+.tlist { display:flex; flex-wrap:wrap; gap:4px; }
+.tlist code { font-size:11px; padding:2px 6px; border-radius:5px; background:var(--surface); border:1px solid var(--border); color:var(--text-muted); }
+.tlist code.live { border-color:var(--accent); color:var(--heading); background:var(--accent-soft); }
+.tlist code.idle { border-style:dashed; }
+.keyline { font-size:11.5px; color:var(--text-muted); display:flex; gap:16px; flex-wrap:wrap; margin-top:2px; }
+.keyline span { display:inline-flex; align-items:center; gap:6px; }
+.keyline i { width:15px; height:11px; border-radius:4px; display:inline-block; border:1px solid var(--accent); background:var(--accent-soft); }
+.keyline i.dash { border-style:dashed; border-color:var(--border-strong); background:var(--surface); }
+
+/* ─── Architecture ──────────────────────────────────────────────── */
+.arch { padding:24px; display:flex; flex-direction:column; gap:0; }
+.layer { border:1px solid var(--border); border-radius:12px; padding:14px 16px; background:var(--surface-2);
+  display:flex; flex-direction:column; gap:10px; }
+.layer.ext { background:transparent; border-style:dashed; }
+.layer-h { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+.layer-h .t { font-family:"Archivo",sans-serif; font-weight:700; font-size:13px; letter-spacing:.02em; }
+.layer-h .s { font-size:11.5px; color:var(--text-muted); font-family:"IBM Plex Mono",monospace; }
+.nodes { display:flex; flex-wrap:wrap; gap:6px; }
+.node { font-size:12px; padding:5px 10px; border-radius:8px; background:var(--surface); border:1px solid var(--border); }
+.node.hot { border-color:var(--accent); background:var(--accent-soft); color:var(--heading); font-weight:500; }
+.node.off { border-style:dashed; color:var(--text-subtle); }
+.flow { display:flex; align-items:stretch; gap:14px; padding:0 4px; }
+.flow .leg { flex:1; display:flex; flex-direction:column; align-items:center; gap:6px; padding:10px 0; }
+.flow .leg .arrow { width:2px; flex:1; min-height:22px; background:var(--border-strong); position:relative; }
+.flow .leg .arrow::after { content:""; position:absolute; bottom:-1px; left:50%; transform:translateX(-50%);
+  border:5px solid transparent; border-top-color:var(--border-strong); }
+.flow .leg .arrow.teal { background:var(--accent); }
+.flow .leg .arrow.teal::after { border-top-color:var(--accent); }
+.flow .leg .cap { font-size:11px; color:var(--text-muted); text-align:center; line-height:1.45; max-width:26ch; }
+.flow .leg .cap b { color:var(--text); font-weight:600; }
+
+.pipe { display:grid; grid-template-columns:repeat(auto-fit,minmax(152px,1fr)); gap:10px; }
+.pstep { border:1px solid var(--border); border-radius:10px; padding:11px 12px; background:var(--surface-2);
+  display:flex; flex-direction:column; gap:4px; }
+.pstep .pn { font-size:12.5px; font-weight:600; }
+.pstep .pd { font-size:11.5px; color:var(--text-muted); }
+.pstep .pf { font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--text-subtle); }
+
+table.api { border-collapse:collapse; width:100%; min-width:600px; font-size:13px; }
+table.api th { text-align:left; font-size:10.5px; letter-spacing:.11em; text-transform:uppercase; color:var(--text-subtle);
+  font-weight:600; padding:9px 12px; border-bottom:1px solid var(--border); background:var(--surface-2); }
+table.api td { padding:8px 12px; border-bottom:1px solid var(--border); }
+table.api tr:last-child td { border-bottom:none; }
+table.api td.m { font-family:"IBM Plex Mono",monospace; font-size:11.5px; font-weight:500; color:var(--heading); }
+table.api td.p { font-family:"IBM Plex Mono",monospace; font-size:12px; }
+table.api tr.gone td.p, table.api tr.gone td.m { color:var(--text-subtle); }
+
+footer { margin-top:64px; padding-top:20px; border-top:1px solid var(--border);
+  font-size:12.5px; color:var(--text-muted); display:flex; flex-direction:column; gap:5px; }
+footer code { font-size:11.5px; background:var(--surface-2); padding:1px 5px; border-radius:4px; }
+
+@media (max-width:900px) {
+  .shell { grid-template-columns:1fr; }
+  .rail { position:static; height:auto; padding:16px; }
+  .rail nav { flex-direction:row; flex-wrap:wrap; }
+  .rail nav a { border-radius:999px; padding:7px 13px; }
+  .legend { margin-top:0; flex-direction:row; flex-wrap:wrap; align-items:center; gap:12px; }
+  .legend h4 { width:100%; }
+  main { padding:24px 18px 60px; }
+  .flow { flex-direction:column; gap:8px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }
+</style>
+
+<div class="shell">
+  <aside class="rail">
+    <div class="brand">
+      <span class="brand-mark">ClassIQ</span>
+      <span class="brand-sub">Build Tracker</span>
+    </div>
+    <nav id="nav">
+      <a href="#pulse" class="on"><span class="tick"></span>Pulse</a>
+      <a href="#board"><span class="tick"></span>Board</a>
+      <a href="#timeline"><span class="tick"></span>Timeline</a>
+      <a href="#wbs"><span class="tick"></span>Work breakdown</a>
+      <a href="#model"><span class="tick"></span>Model</a>
+      <a href="#architecture"><span class="tick"></span>Architecture</a>
+    </nav>
+    <div class="legend">
+      <h4>Status</h4>
+      <div class="legend-row"><span class="sw" style="background:var(--ok)"></span>Done — verified in repo</div>
+      <div class="legend-row"><span class="sw" style="background:var(--warn)"></span>Partial — runs, incomplete</div>
+      <div class="legend-row"><span class="sw" style="background:var(--risk)"></span>Stub — UI only, no backend</div>
+      <div class="legend-row"><span class="sw" style="background:var(--idle)"></span>Not started</div>
+      <div class="legend-row"><span class="sw" style="background:var(--defer)"></span>Deferred by choice</div>
+    </div>
+    <div class="sync">
+      Synced to <b>working tree</b> after <b>92286f6</b><br>
+      4 Sep 2026 · branch <b>development</b> · not yet committed
+    </div>
+  </aside>
+
+  <main>
+  <div class="stack">
+
+    <!-- ══ PULSE ══════════════════════════════════════════════ -->
+    <section id="pulse">
+      <div class="pulse-head">
+        <span class="eyebrow">Status · 4 September 2026</span>
+        <h1>Feature-complete in the working tree; database and real-data steps remain</h1>
+        <p class="lede">Everything the plan scheduled for Phases 3–5 is now <strong>built and verified
+        offline</strong>: the F5 what-if scenario API and builder, the survey ingestion pipeline
+        (the 176-student RDF dump parses end to end), section lifecycle and roster editing, an
+        audited course catalogue, the S1 early-warning system, S3 longitudinal analytics, the S2
+        <em>Ask ClassIQ</em> assistant, and a test suite (69 pytest + 8 Vitest, tsc and eslint
+        clean). What is left is <strong>operational</strong>: commit the work, apply two migrations
+        to the shared Supabase project (unreachable today), run against real data, and write the
+        report.</p>
+      </div>
+
+      <div class="tiles">
+        <div class="card tile">
+          <span class="k">Work items done</span>
+          <span class="v" id="t-done">—</span>
+          <div class="bar" id="t-bar"></div>
+          <span class="n" id="t-done-n">—</span>
+        </div>
+        <div class="card tile">
+          <span class="k">Committed features</span>
+          <span class="v">8<span style="font-size:17px;color:var(--text-subtle)"> / 8</span></span>
+          <span class="n">F1–F8 shipped · stretch goals <strong>S1–S3</strong> built too</span>
+        </div>
+        <div class="card tile">
+          <span class="k">Phase</span>
+          <span class="v" style="font-size:23px">Phase 3</span>
+          <span class="n">Opened 1 Sep 2026 · Phase 3–5 code complete · Phase 6 next</span>
+        </div>
+        <div class="card tile">
+          <span class="k">Tests</span>
+          <span class="v" style="font-size:23px">77 <span style="font-size:15px;font-weight:500;color:var(--text-muted)">passing</span></span>
+          <span class="n">69 pytest (5 RLS tests skip without a test DB) · 8 Vitest · tsc + eslint clean</span>
+        </div>
+        <div class="card tile">
+          <span class="k">Schema</span>
+          <span class="v">29</span>
+          <span class="n">tables · 22 enum types · RLS on every tenant table · 2 migrations pending</span>
+        </div>
+      </div>
+
+      <div class="card attention">
+        <h3>Needs attention</h3>
+        <ul class="att-list">
+          <li>
+            <span class="stripe" style="background:var(--risk)"></span>
+            <div>
+              <div class="t">Nothing from 4 September is committed yet</div>
+              <div class="d">The whole FYP-2 build — scenarios, ingestion, lifecycle, S1/S2/S3, tests,
+              docs — sits in the working tree on top of <code>92286f6</code>. Review and commit it
+              (and <code>Docs/tracker.html</code>, still untracked) before anything else.</div>
+            </div>
+          </li>
+          <li>
+            <span class="stripe" style="background:var(--risk)"></span>
+            <div>
+              <div class="t">Two migrations are not applied</div>
+              <div class="d">The shared Supabase project was unreachable on 4 Sep (pooler reports the
+              tenant as not found — probably paused). Run
+              <code>db/migrations/2026-09-04_seed_ils_instrument.sql</code> and
+              <code>2026-09-04_early_warning.sql</code> with <code>run_migrations.mjs</code>; both
+              are idempotent. The early-warning endpoints error until the second one is in.</div>
+            </div>
+          </li>
+          <li>
+            <span class="stripe" style="background:var(--warn)"></span>
+            <div>
+              <div class="t">No run against the live database yet</div>
+              <div class="d">All 69 backend tests are hermetic (engines, adapters, auth path with a
+              stubbed session). The RLS-isolation suite in <code>tests/rls/</code> and every
+              write path still need one pass against a seeded database — do this right after the
+              migrations.</div>
+            </div>
+          </li>
+          <li>
+            <span class="stripe" style="background:var(--warn)"></span>
+            <div>
+              <div class="t">Ask ClassIQ needs a key</div>
+              <div class="d"><code>ANTHROPIC_API_KEY</code> is empty in <code>backend/.env</code>, so
+              <code>/api/llm/query</code> returns 503 and the page shows a notice. Add the key
+              (backend only) to demo S2; default model is <code>claude-opus-5</code> with a
+              4096-token answer cap.</div>
+            </div>
+          </li>
+          <li>
+            <span class="stripe" style="background:var(--idle)"></span>
+            <div>
+              <div class="t">Thresholds are first-pass</div>
+              <div class="d">Scoring weights (0.40 / 0.25 / 0.20 / 0.15) and the early-warning bands
+              (High ≥ 85 % attendance / 70 % grade, etc.) are seeded defaults awaiting Mr. Mubassher's
+              input and a real semester of data.</div>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ══ BOARD ══════════════════════════════════════════════ -->
+    <section id="board">
+      <div class="sec-head">
+        <span class="eyebrow">Board</span>
+        <h2>Every work item, by state</h2>
+        <p>The same 44 items as the work breakdown below, dealt into status columns. Filters apply
+        to both views, and your selection is remembered on this device.</p>
+      </div>
+
+      <div class="card toolbar">
+        <div class="fgroup">
+          <span class="lab">Owner</span>
+          <div id="f-own" role="group" aria-label="Filter by owner"></div>
+        </div>
+        <div class="fgroup">
+          <span class="lab">Phase</span>
+          <div id="f-ph" role="group" aria-label="Filter by phase"></div>
+        </div>
+        <span class="count-out" id="count-out" aria-live="polite"></span>
+      </div>
+
+      <div class="board" id="board"></div>
+    </section>
+
+    <!-- ══ TIMELINE ═══════════════════════════════════════════ -->
+    <section id="timeline">
+      <div class="sec-head">
+        <span class="eyebrow">Timeline</span>
+        <h2>Plan versus commits</h2>
+        <p>Phases as scheduled in the project plan, drawn on a real day scale from April 2026 to
+        January 2027 — with the actual commit history on the same axis underneath. The two do not
+        line up, in both directions.</p>
+      </div>
+
+      <div class="card gantt">
+        <div class="gantt-inner">
+          <div class="months">
+            <i style="left:0%">Apr</i><i style="left:9.84%">May</i><i style="left:20%">Jun</i>
+            <i style="left:29.84%">Jul</i><i style="left:40%">Aug</i><i style="left:50.16%">Sep</i>
+            <i style="left:60%">Oct</i><i style="left:70.16%">Nov</i><i style="left:80%">Dec</i>
+            <i style="left:90.16%">Jan</i>
+          </div>
+
+          <div class="track">
+            <span class="lbl">Phase 1 · Foundation</span>
+            <div class="lane">
+              <div class="gbar" style="left:0%;width:20%;background:var(--ok)">Complete</div>
+              <div class="today" style="left:51.15%"><span class="tlab">today</span></div>
+            </div>
+          </div>
+          <div class="track">
+            <span class="lbl">Phase 2 · Twins &amp; profiles</span>
+            <div class="lane">
+              <div class="gbar" style="left:9.84%;width:20%;background:var(--ok)">Complete</div>
+              <div class="today" style="left:51.15%"></div>
+            </div>
+          </div>
+          <div class="track">
+            <span class="lbl" style="color:var(--text-muted);font-weight:500">Summer break</span>
+            <div class="lane">
+              <div class="gbar hollow" style="left:29.84%;width:20.33%">No teaching weeks</div>
+              <div class="today" style="left:51.15%"></div>
+            </div>
+          </div>
+          <div class="track">
+            <span class="lbl">Phase 3 · Engine &amp; builder</span>
+            <div class="lane">
+              <div class="gbar" style="left:50.16%;width:20%;background:var(--ok)">7 of 8 done · demo pending</div>
+              <div class="today" style="left:51.15%"></div>
+            </div>
+          </div>
+          <div class="track">
+            <span class="lbl">Phase 4 · Reports &amp; dashboards</span>
+            <div class="lane">
+              <div class="gbar" style="left:60%;width:20%;background:var(--ok)">5 of 6 done · demo pending</div>
+              <div class="today" style="left:51.15%"></div>
+            </div>
+          </div>
+          <div class="track">
+            <span class="lbl">Phase 5 · Stretch goals</span>
+            <div class="lane">
+              <div class="gbar" style="left:70.16%;width:20%;background:var(--ok)">S1 · S2 · S3 built</div>
+              <div class="today" style="left:51.15%"></div>
+            </div>
+          </div>
+          <div class="track">
+            <span class="lbl">Phase 6 · Testing &amp; defence</span>
+            <div class="lane">
+              <div class="gbar" style="left:80%;width:20%;background:var(--warn)">Tests done · rest pending</div>
+              <div class="today" style="left:51.15%"></div>
+            </div>
+          </div>
+
+          <div class="commits">
+            <span class="lbl">Commits <span style="color:var(--text-subtle);font-weight:400">12 over 6 days</span></span>
+            <div class="lane">
+              <span class="cdot" style="left:3.93%" title="13 Apr 2026 — 1 commit: prototype"></span>
+              <span class="cdot" style="left:13.44%" title="12 May 2026 — 1 commit: flatten prototype into the monorepo"></span>
+              <span class="cdot big" style="left:13.77%" title="13 May 2026 — 7 commits: db schema, FastAPI service, Next.js app, dashboards"><b>7</b></span>
+              <span class="cdot" style="left:14.10%" title="14 May 2026 — 1 commit: shared settings"></span>
+              <span class="cdot" style="left:20.66%" title="3 Jun 2026 — 1 commit: institution-admin layer"></span>
+              <span class="cdot" style="left:47.54%" title="24 Aug 2026 — 1 commit: course creation, README, use-case diagram"></span>
+              <span class="gapmark" style="left:21.5%;width:25.3%"><span>82 days, no commits</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ WBS ════════════════════════════════════════════════ -->
+    <section id="wbs">
+      <div class="sec-head">
+        <span class="eyebrow">Work breakdown structure</span>
+        <h2>44 items, seven groups</h2>
+        <p>Tasks, durations and owners come from the project plan; every status was checked against
+        the working tree on 4 Sep 2026 (uncommitted changes on top of <code>92286f6</code>). The last column is where the work lives, so any
+        status here can be verified — or corrected — in one look.</p>
+      </div>
+
+      <div class="tbl-wrap">
+        <table class="wbs">
+          <thead>
+            <tr>
+              <th style="width:31%">Task</th>
+              <th style="width:12%">Status</th>
+              <th style="width:14%">Owner (planned)</th>
+              <th style="width:8%">Est.</th>
+              <th style="width:35%">Where it lives</th>
+            </tr>
+          </thead>
+          <tbody id="wbs-body"></tbody>
+        </table>
+      </div>
+      <p style="font-size:12px;color:var(--text-subtle);margin:10px 2px 0;max-width:70ch">
+        Owners are as assigned in the project plan. All 12 commits to date are authored by one
+        account, so the commit history is not a record of who did what — it is shown separately in
+        the timeline above.
+      </p>
+    </section>
+
+    <!-- ══ MODEL ══════════════════════════════════════════════ -->
+    <section id="model">
+      <div class="sec-head">
+        <span class="eyebrow">Model</span>
+        <h2>What the system actually computes</h2>
+        <p>Two models sit at the centre of ClassIQ: the Felder–Silverman profile that turns a survey
+        into a student twin, and the four-factor score that turns a proposed section into a number.
+        Both are implemented; the weights are configurable and not yet final.</p>
+      </div>
+
+      <div class="two">
+        <div class="card panel">
+          <h3>FSLSM — the student twin</h3>
+          <p class="sub">44-question ILS → four bipolar axes, scored −11…+11 (odd values only).
+          Sign is the pole, magnitude is the strength.</p>
+          <div class="axis">
+            <div class="ax">
+              <div class="ends"><b class="pos">Active</b><b class="neg">Reflective</b></div>
+              <div class="scale"></div>
+            </div>
+            <div class="ax">
+              <div class="ends"><b class="pos">Sensing</b><b class="neg">Intuitive</b></div>
+              <div class="scale"></div>
+            </div>
+            <div class="ax">
+              <div class="ends"><b class="pos">Visual</b><b class="neg">Verbal</b></div>
+              <div class="scale"></div>
+            </div>
+            <div class="ax">
+              <div class="ends"><b class="pos">Sequential</b><b class="neg">Global</b></div>
+              <div class="scale"></div>
+            </div>
+            <div class="ticks"><span>+11</span><span>+5</span><span>0</span><span>−5</span><span>−11</span></div>
+          </div>
+          <div class="outcome">
+            <div class="oc"><span class="r">|s| ≤ 3</span><span class="l">Balanced</span></div>
+            <div class="oc"><span class="r">5 … 7</span><span class="l">Moderate</span></div>
+            <div class="oc"><span class="r">|s| ≥ 9</span><span class="l">Strong</span></div>
+          </div>
+          <p class="sub" style="margin:0">Profiles are versioned — <code>version</code> +
+          <code>is_current</code>. Retaking the survey writes a new row and keeps the old one, which
+          is what makes the longitudinal stretch goal (S3) possible later without a migration.</p>
+        </div>
+
+        <div class="card panel">
+          <h3>Compatibility score — four weighted factors</h3>
+          <p class="sub">Each factor scorer is a pure function returning 0–100. The aggregator is the
+          only place weights are read; they live in <code>scoring_configs.weights</code> JSONB.</p>
+          <div class="wts">
+            <div class="wt">
+              <span class="n">Style alignment</span><span class="v">0.40</span>
+              <span class="b"><i style="width:40%;background:var(--accent)"></i></span>
+              <span class="c">Teacher interaction &amp; pacing mapped to FSLSM affinities, against the class mean profile</span>
+            </div>
+            <div class="wt">
+              <span class="n">Social cohesion</span><span class="v">0.25</span>
+              <span class="b"><i style="width:25%;background:var(--purple)"></i></span>
+              <span class="c">NetworkX on the peer subgraph — connectivity and clustering, penalised by conflict density and isolation</span>
+            </div>
+            <div class="wt">
+              <span class="n">Class balance</span><span class="v">0.20</span>
+              <span class="b"><i style="width:20%;background:var(--defer)"></i></span>
+              <span class="c">Shannon entropy of the dominant-axis spread across the four axes</span>
+            </div>
+            <div class="wt">
+              <span class="n">Participation mix</span><span class="v">0.15</span>
+              <span class="b"><i style="width:15%;background:var(--warn)"></i></span>
+              <span class="c">L1 distance from an ideal mix of 15% low / 55% medium / 30% high</span>
+            </div>
+          </div>
+          <div class="outcome">
+            <div class="oc" style="border-left:3px solid var(--ok)"><span class="r">≥ 70</span><span class="l">High</span></div>
+            <div class="oc" style="border-left:3px solid var(--warn)"><span class="r">50 – 69</span><span class="l">Medium</span></div>
+            <div class="oc" style="border-left:3px solid var(--risk)"><span class="r">&lt; 50</span><span class="l">Low</span></div>
+          </div>
+          <p class="sub" style="margin:0">Output is a predicted <em>outcome band</em>, not a grade.
+          ClassIQ is a decision-support tool — this number is never presented as a guarantee.</p>
+        </div>
+      </div>
+
+      <div class="card panel" style="margin-top:18px">
+        <h3>Data model — 29 tables in nine groups</h3>
+        <p class="sub">Authoritative schema is <code>db/schema.sql</code>; prose lives in
+        <code>Docs/DATA_MODEL.md</code>.</p>
+        <div class="groups">
+          <div class="grp-card">
+            <div class="gh"><span class="gl">A</span><span class="gn">Tenancy</span><span class="gc">4</span></div>
+            <div class="tlist">
+              <code class="live">institutions</code><code class="live">departments</code>
+              <code class="live">auth_users</code><code class="live">user_departments</code>
+            </div>
+          </div>
+          <div class="grp-card">
+            <div class="gh"><span class="gl">B</span><span class="gn">Academic structure</span><span class="gc">4</span></div>
+            <div class="tlist">
+              <code class="live">academic_terms</code><code class="live">courses</code>
+              <code class="live">sections</code><code class="live">section_students</code>
+            </div>
+          </div>
+          <div class="grp-card">
+            <div class="gh"><span class="gl">C</span><span class="gn">People as data subjects</span><span class="gc">2</span></div>
+            <div class="tlist"><code class="live">students</code><code class="live">teachers</code></div>
+          </div>
+          <div class="grp-card">
+            <div class="gh"><span class="gl">D</span><span class="gn">Survey instrument</span><span class="gc">2</span></div>
+            <div class="tlist"><code class="live">survey_instruments</code><code class="live">survey_questions</code></div>
+          </div>
+          <div class="grp-card">
+            <div class="gh"><span class="gl">E</span><span class="gn">Responses &amp; versioned profiles</span><span class="gc">5</span></div>
+            <div class="tlist">
+              <code class="live">survey_responses</code><code class="live">survey_answers</code>
+              <code class="live">student_profiles</code><code class="live">student_aux_profiles</code>
+              <code class="live">teacher_profiles</code>
+            </div>
+          </div>
+          <div class="grp-card">
+            <div class="gh"><span class="gl">F</span><span class="gn">Social graph</span><span class="gc">1</span></div>
+            <div class="tlist"><code class="live">peer_relationships</code></div>
+          </div>
+          <div class="grp-card">
+            <div class="gh"><span class="gl">G</span><span class="gn">Scenarios &amp; simulation</span><span class="gc">7</span></div>
+            <div class="tlist">
+              <code class="live">scoring_configs</code><code class="live">scenarios</code>
+              <code class="live">scenario_sections</code><code class="live">scenario_section_students</code>
+              <code class="live">simulation_runs</code><code class="live">simulation_results</code>
+              <code class="live">simulation_result_factors</code>
+            </div>
+          </div>
+          <div class="grp-card">
+            <div class="gh"><span class="gl">H</span><span class="gn">Ops</span><span class="gc">2</span></div>
+            <div class="tlist"><code class="live">audit_logs</code><code class="live">ingestion_jobs</code></div>
+          </div>
+          <div class="grp-card">
+            <div class="gh"><span class="gl">I</span><span class="gn">Early warning (S1)</span><span class="gc">2</span></div>
+            <div class="tlist"><code class="idle">section_outcomes</code><code class="idle">early_warning_flags</code></div>
+          </div>
+        </div>
+        <div class="keyline">
+          <span><i></i> Read or written by shipped code</span>
+          <span><i class="dash"></i> Code is written — table not yet created in the shared database (migration pending)</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ ARCHITECTURE ═══════════════════════════════════════ -->
+    <section id="architecture">
+      <div class="sec-head">
+        <span class="eyebrow">Architecture</span>
+        <h2>How a request moves</h2>
+        <p>Two data paths, deliberately. HoD and teacher pages read Supabase directly from server
+        components under RLS; every write, and all admin reads, go through FastAPI — which connects
+        with the secret key, bypasses RLS, and scopes each query by <code>institution_id</code> in
+        application code.</p>
+      </div>
+
+      <div class="card arch">
+        <div class="layer">
+          <div class="layer-h"><span class="t">People</span><span class="s">four roles</span></div>
+          <div class="nodes">
+            <span class="node">Super admin</span><span class="node">Institution admin</span>
+            <span class="node">HoD</span><span class="node">Teacher</span>
+            <span class="node off">Student — post-FYP (R3)</span>
+          </div>
+        </div>
+
+        <div class="flow">
+          <div class="leg"><div class="arrow"></div><span class="cap">HTTPS</span></div>
+        </div>
+
+        <div class="layer">
+          <div class="layer-h"><span class="t">Frontend</span><span class="s">Next.js 16.2.6 · React 19 · Tailwind 4 · Vercel</span></div>
+          <div class="nodes">
+            <span class="node hot">Section builder</span><span class="node hot">HoD dashboard</span>
+            <span class="node hot">Social graph — custom SVG</span><span class="node hot">Reports</span>
+            <span class="node hot">Teacher dashboard</span><span class="node hot">Admin · users, CSV, depts, audit</span>
+            <span class="node hot">What-if scenarios</span><span class="node hot">Survey ingestion</span>
+            <span class="node hot">Early warning</span><span class="node hot">Longitudinal</span><span class="node hot">Ask ClassIQ</span>
+          </div>
+        </div>
+
+        <div class="flow">
+          <div class="leg">
+            <div class="arrow"></div>
+            <span class="cap"><b>Direct reads</b><br>server components, publishable key, RLS-scoped</span>
+          </div>
+          <div class="leg">
+            <div class="arrow teal"></div>
+            <span class="cap"><b>All writes + admin reads</b><br>Bearer JWT to FastAPI</span>
+          </div>
+        </div>
+
+        <div class="layer" style="border-color:var(--accent)">
+          <div class="layer-h"><span class="t">Backend</span><span class="s">FastAPI · SQLAlchemy 2 async · asyncpg · Railway / Render</span></div>
+          <div class="nodes">
+            <span class="node">routers</span><span class="node">services</span><span class="node">repositories</span>
+            <span class="node hot">engines/scoring — 4 factors</span><span class="node hot">engines/fslsm</span>
+            <span class="node hot">engines/graph — NetworkX 3.4</span>
+            <span class="node hot">auth — Supabase JWT, HS256 + JWKS</span>
+            <span class="node hot">CSV import</span><span class="node hot">audit log</span>
+            <span class="node hot">ingestion/ — RDF, CSV, form, manual</span><span class="node hot">engines/early_warning</span>
+            <span class="node hot">llm/ — Claude API (S2)</span><span class="node hot">tests/ — 69 pytest</span>
+          </div>
+        </div>
+
+        <div class="flow">
+          <div class="leg">
+            <div class="arrow teal"></div>
+            <span class="cap"><b>Secret key</b><br>bypasses RLS, scopes <code>institution_id</code> in code</span>
+          </div>
+        </div>
+
+        <div class="layer">
+          <div class="layer-h"><span class="t">Supabase</span><span class="s">PostgreSQL · Auth · row-level security</span></div>
+          <div class="nodes">
+            <span class="node hot">Postgres — 29 tables, RLS on every tenant table</span>
+            <span class="node hot">Auth — issues the JWT</span>
+            <span class="node">db/schema.sql · migrations/</span>
+          </div>
+        </div>
+
+        <div class="flow">
+          <div class="leg"><div class="arrow"></div><span class="cap">upstream only — pushes in, never reads back</span></div>
+        </div>
+
+        <div class="layer ext">
+          <div class="layer-h"><span class="t">External</span><span class="s">not built here</span></div>
+          <div class="nodes">
+            <span class="node off">FSLSM model &amp; content recommendations — Mr. Mubassher</span>
+            <span class="node off">RDF dump in repo — imported through /api/ingestion/rdf</span>
+            <span class="node off">Anthropic Claude API — S2 wired, backend key required</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card panel" style="margin-top:18px">
+        <h3>Simulation pipeline</h3>
+        <p class="sub">In-process, synchronous, inside the request. <code>POST /api/sections/{id}/simulate</code> — the same <code>score_roster</code> path serves <code>POST /api/scenarios/{id}/simulate</code>.</p>
+        <div class="pipe">
+          <div class="pstep">
+            <span class="pn">Gather</span>
+            <span class="pd">Teacher profile, current student profiles, aux profiles, peer edges</span>
+            <span class="pf">repositories/</span>
+          </div>
+          <div class="pstep">
+            <span class="pn">Score four factors</span>
+            <span class="pd">Each a pure function returning score + evidence</span>
+            <span class="pf">engines/scoring/*.py</span>
+          </div>
+          <div class="pstep">
+            <span class="pn">Aggregate</span>
+            <span class="pd">Weighted sum from <code>scoring_configs</code></span>
+            <span class="pf">scoring/aggregator.py</span>
+          </div>
+          <div class="pstep">
+            <span class="pn">Persist</span>
+            <span class="pd">Run, result, and one row per factor</span>
+            <span class="pf">simulation_result_factors</span>
+          </div>
+          <div class="pstep">
+            <span class="pn">Report</span>
+            <span class="pd">Distribution, breakdown, outcome band, recommended teacher</span>
+            <span class="pf">reports/ → print to PDF</span>
+          </div>
+        </div>
+        <p class="sub" style="margin:0">Section states run
+        <code>draft → simulated → active → archived</code>. A section cannot skip from draft to
+        active — it must be simulated first, which forces an informed decision. Editing a simulated
+        section drops it back to draft and orphans the previous run, which is kept for audit.</p>
+      </div>
+
+      <div class="card panel" style="margin-top:18px">
+        <h3>API surface</h3>
+        <p class="sub">What the backend mounts today, against what the architecture doc specifies.</p>
+        <div style="overflow-x:auto">
+          <table class="api">
+            <thead>
+              <tr><th style="width:12%">Method</th><th style="width:44%">Path</th><th style="width:44%">State</th></tr>
+            </thead>
+            <tbody>
+              <tr><td class="m">GET</td><td class="p">/health · /ready</td><td>Live</td></tr>
+              <tr><td class="m">GET</td><td class="p">/api/me</td><td>Live</td></tr>
+              <tr><td class="m">GET</td><td class="p">/api/students · /{id} · /{id}/profile-history</td><td>Live — history is S3</td></tr>
+              <tr><td class="m">GET</td><td class="p">/api/teachers · /api/teachers/{id}</td><td>Live</td></tr>
+              <tr><td class="m">GET POST PATCH DELETE</td><td class="p">/api/sections · /{id} · PUT /{id}/students</td><td>Live — audited; roster editing</td></tr>
+              <tr><td class="m">POST</td><td class="p">/api/sections/{id}/simulate · /activate · /archive · /reopen</td><td>Live — engine + §7 state machine</td></tr>
+              <tr><td class="m">GET POST PATCH DELETE</td><td class="p">/api/scenarios · /{id} · /from-section/{id}</td><td>Live — F5</td></tr>
+              <tr><td class="m">POST GET POST</td><td class="p">/api/scenarios/{id}/simulate · /compare · /apply</td><td>Live — side-by-side deltas, apply re-scores live sections</td></tr>
+              <tr><td class="m">POST</td><td class="p">/api/ingestion/rdf · /csv · /form · /manual</td><td>Live — dry-run + commit, idempotent</td></tr>
+              <tr><td class="m">GET</td><td class="p">/api/ingestion/jobs · /jobs/{id} · /instrument</td><td>Live</td></tr>
+              <tr><td class="m">GET</td><td class="p">/api/reports/sections/{id}</td><td>Live — staff or the assigned teacher</td></tr>
+              <tr><td class="m">GET</td><td class="p">/api/analytics/longitudinal</td><td>Live — S3</td></tr>
+              <tr><td class="m">GET PATCH</td><td class="p">/api/early-warning/overview · /flags · /flags/{id}</td><td>Live — S1 (needs the 2026-09-04 migration)</td></tr>
+              <tr><td class="m">GET POST</td><td class="p">/api/early-warning/sections/{id}/outcomes · /evaluate · /flags</td><td>Live — teachers may record their own sections</td></tr>
+              <tr><td class="m">GET POST</td><td class="p">/api/llm/status · /api/llm/query</td><td>Live — S2, 503 until ANTHROPIC_API_KEY is set</td></tr>
+              <tr><td class="m">GET POST PATCH</td><td class="p">/api/admin/institutions</td><td>Live</td></tr>
+              <tr><td class="m">GET</td><td class="p">/api/admin/system/overview · audit · ingestion-jobs</td><td>Live</td></tr>
+              <tr><td class="m">GET POST PATCH DELETE</td><td class="p">/api/institution/departments · /hods</td><td>Live</td></tr>
+              <tr><td class="m">GET POST PATCH</td><td class="p">/api/institution/users</td><td>Live</td></tr>
+              <tr><td class="m">POST</td><td class="p">/api/institution/users/import/preview · commit</td><td>Live</td></tr>
+              <tr><td class="m">GET POST PATCH DELETE</td><td class="p">/api/institution/courses</td><td>Live — replaces the direct Supabase insert</td></tr>
+              <tr><td class="m">GET</td><td class="p">/api/institution/analytics/overview · departments/{id} · score-trend · simulations-by-department</td><td>Live — drill-down UI done</td></tr>
+              <tr><td class="m">GET</td><td class="p">/api/institution/audit</td><td>Live</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <div><strong style="color:var(--text)">ClassIQ</strong> — AI-Powered Digital Twin Platform for Classroom Intelligence · Muhammad Ali Jinnah University · supervised by Dr. Syed Imran Jami</div>
+      <div>Sources: <code>Docs/project.md</code>, <code>Docs/BACKEND_ARCHITECTURE.md</code>, <code>Docs/DATA_MODEL.md</code>, <code>db/schema.sql</code>, and the working tree on 4 Sep 2026 (uncommitted, on top of <code>92286f6</code>).</div>
+      <div>Regenerated from <code>Docs/tracker.html</code>. Statuses are checked against code, not copied from the plan.</div>
+    </footer>
+
+  </div>
+  </main>
+</div>
+
+<script>
+// ── Single source of truth. Update these rows after a push; everything
+//    on the page (tiles, board, table, counts) derives from them.
+const S = {
+  done:    { label:"Done",        c:"var(--ok)",    bg:"var(--ok-bg)" },
+  partial: { label:"Partial",     c:"var(--warn)",  bg:"var(--warn-bg)" },
+  stub:    { label:"Stub",        c:"var(--risk)",  bg:"var(--risk-bg)" },
+  todo:    { label:"Not started", c:"var(--idle)",  bg:"var(--idle-bg)" },
+  defer:   { label:"Deferred",    c:"var(--defer)", bg:"var(--defer-bg)" }
+};
+const ORDER = ["done","partial","stub","todo","defer"];
+
+const GROUPS = [
+  { id:"p1",    name:"Phase 1 — Foundation & Setup",            when:"Apr–May 2026" },
+  { id:"p2",    name:"Phase 2 — Twin Generation & Profiles",    when:"May–Jun 2026" },
+  { id:"added", name:"Added scope — Institution Admin layer",   when:"not in the original plan" },
+  { id:"p3",    name:"Phase 3 — Scoring Engine & Section Builder", when:"Sep–Oct 2026" },
+  { id:"p4",    name:"Phase 4 — Reports & Dashboards",          when:"Oct–Nov 2026" },
+  { id:"p5",    name:"Phase 5 — Stretch Goals",                 when:"if on track" },
+  { id:"p6",    name:"Phase 6 — Testing & Presentation",        when:"Dec 2026–Jan 2027" }
+];
+
+const ITEMS = [
+  // ── Phase 1
+  { g:"p1", t:"Project scaffolding & stack setup", s:"done", o:"Khubaib, Adnan", d:"5d", w:"frontend/ · backend/ · db/ — commits 7c0e494, 1464eb9" },
+  { g:"p1", t:"Database schema design", s:"done", o:"Khubaib", d:"7d", w:"db/schema.sql — 27 tables, 19 enums, ~30 indexes" },
+  { g:"p1", t:"Authentication & multi-tenant RLS", s:"done", o:"Khubaib", d:"7d", w:"core/security.py · deps.py · RLS policies in schema.sql" },
+  { g:"p1", t:"UI/UX design — all screens & components", s:"done", o:"Muniba", d:"14d", w:"Docs/ClassIQ-design-guide.pdf · frontend/src/lib/brand.ts" },
+  { g:"p1", t:"Mock data & FSLSM ingestion planning", s:"done", o:"Khubaib, Adnan", d:"7d", w:"db/seed_demo_data.mjs · ingestion_jobs (4 sources)" },
+  { g:"p1", t:"Institution onboarding UI", s:"done", o:"Adnan", d:"7d", w:"(dashboard)/admin/institutions/" },
+  { g:"p1", t:"Institution onboarding backend", s:"done", o:"Khubaib", d:"7d", w:"routers/admin_institutions.py" },
+  { g:"p1", t:"Phase 1 milestone demo & review", s:"done", o:"All", d:"2d", w:"—" },
+
+  // ── Phase 2
+  { g:"p2", t:"Student profile model & versioning", s:"done", o:"Khubaib", d:"10d", w:"models/student.py · student_profiles (version, is_current)" },
+  { g:"p2", t:"Teacher profile model & survey", s:"done", o:"Khubaib", d:"7d", w:"models/teacher.py · teacher_profiles" },
+  { g:"p2", t:"Survey data ingestion pipeline", s:"done", o:"Khubaib", d:"7d", w:"backend/app/ingestion/ (rdf, csv, form_app, manual adapters) · services/ingestion_service.py · /api/ingestion · (dashboard)/ingestion", note:"The repo's 176-student RDF dump parses end to end (tested); dry-run preview before commit" },
+  { g:"p2", t:"Profile display UI & survey forms", s:"done", o:"Adnan", d:"10d", w:"(dashboard)/students · /teachers · components/FslsmBars" },
+  { g:"p2", t:"Dashboard design & component library", s:"done", o:"Muniba", d:"10d", w:"frontend/src/components/" },
+  { g:"p2", t:"Phase 2 milestone demo & review", s:"done", o:"All", d:"2d", w:"—" },
+
+  // ── Added scope
+  { g:"added", t:"User provisioning", s:"done", o:"Khubaib, Adnan", d:"—", w:"routers/institution_users.py · admin/users" },
+  { g:"added", t:"CSV bulk import — preview then commit", s:"done", o:"Khubaib, Adnan", d:"—", w:"institution_users_import.py · services/csv_import.py · papaparse" },
+  { g:"added", t:"Department management & HoD assignment", s:"done", o:"Khubaib, Adnan", d:"—", w:"routers/institution_departments.py · admin/departments" },
+  { g:"added", t:"Append-only audit log", s:"done", o:"Khubaib", d:"—", w:"audit_logs · services/audit.py · admin/audit" },
+  { g:"added", t:"Institution analytics", s:"done", o:"Khubaib, Adnan", d:"—", w:"institution_analytics.py (+ simulations-by-department) · /admin/analytics with department drill-down (AnalyticsDrilldown.tsx)" },
+  { g:"added", t:"Course creation from the section builder", s:"done", o:"Adnan", d:"—", w:"routers/institution_courses.py · sections/_actions.ts now calls POST /api/institution/courses", note:"Audited through FastAPI like every other write" },
+
+  // ── Phase 3
+  { g:"p3", t:"Compatibility scoring algorithm", s:"done", o:"Khubaib", d:"14d", w:"engines/scoring/ — pipeline, style_alignment, social_cohesion, class_balance, participation, aggregator", note:"Delivered early, during FYP-1" },
+  { g:"p3", t:"Social graph modelling (NetworkX)", s:"done", o:"Khubaib", d:"10d", w:"engines/graph/networkx_builder.py", note:"Delivered early, during FYP-1" },
+  { g:"p3", t:"Section builder UI", s:"done", o:"Adnan", d:"14d", w:"(dashboard)/sections/SectionsView.tsx · _actions.ts", note:"Delivered early, during FYP-1" },
+  { g:"p3", t:"What-if scenario testing UI", s:"done", o:"Adnan", d:"10d", w:"(dashboard)/scenarios/ScenariosView.tsx — builder (prefill from a live section), run, side-by-side compare with factor deltas, apply, delete" },
+  { g:"p3", t:"Section lifecycle & roster editing", s:"done", o:"Khubaib, Adnan", d:"—", w:"POST /api/sections/{id}/activate · archive · reopen, PUT /{id}/students, DELETE — lifecycle bar + roster editor in SectionsView", note:"Implements BACKEND_ARCHITECTURE §7; every section write is audited" },
+  { g:"p3", t:"Graph visualisation & scenario UX design", s:"done", o:"Muniba", d:"14d", w:"social-graph/SocialGraphView.tsx — dependency-free force layout", note:"Delivered early; scenario UX still to be applied to the stub" },
+  { g:"p3", t:"Scenario comparison backend API", s:"done", o:"Khubaib", d:"7d", w:"routers/scenarios.py · services/scenario_service.py · engines/scenario_compare.py — list / create / clone / simulate / compare / apply", note:"F5 complete; shares the engine path (score_roster) with live sections" },
+  { g:"p3", t:"Phase 3 milestone demo & review", s:"todo", o:"All", d:"2d", w:"—" },
+
+  // ── Phase 4
+  { g:"p4", t:"Simulation report generation logic", s:"done", o:"Khubaib", d:"10d", w:"POST /api/sections/{id}/simulate · simulation_runs, _results, _result_factors", note:"Delivered early, during FYP-1" },
+  { g:"p4", t:"Report UI & export", s:"done", o:"Adnan", d:"10d", w:"(dashboard)/reports/ · ReportActions.tsx — browser print pipeline · GET /api/reports/sections/{id}", note:"Delivered early, during FYP-1; report API added 4 Sep" },
+  { g:"p4", t:"Teacher dashboard (read-only + S1 data entry)", s:"done", o:"Adnan", d:"7d", w:"(dashboard)/teacher-dashboard/page.tsx · components/OutcomeEntry.tsx", note:"Delivered early; weekly attendance / grade entry added 4 Sep" },
+  { g:"p4", t:"HoD dashboard data aggregation", s:"done", o:"Khubaib", d:"7d", w:"(dashboard)/page.tsx — Supabase-direct reads under RLS", note:"Delivered early, during FYP-1" },
+  { g:"p4", t:"Report layout & dashboard design", s:"done", o:"Muniba", d:"10d", w:"components/ · brand.ts · ScoreRing, Badge, EmptyState", note:"Delivered early, during FYP-1" },
+  { g:"p4", t:"Phase 4 milestone demo & review", s:"todo", o:"All", d:"2d", w:"—" },
+
+  // ── Phase 5
+  { g:"p5", t:"S1 — Early warning system", s:"done", o:"Khubaib", d:"—", w:"db/migrations/2026-09-04_early_warning.sql · engines/early_warning.py · routers/early_warning.py · (dashboard)/early-warning", note:"Migration not yet applied to the shared Supabase project" },
+  { g:"p5", t:"S2 — Natural-language query interface (Ask ClassIQ)", s:"done", o:"Khubaib", d:"—", w:"backend/app/llm/ (client, prompts, context) · routers/llm.py · (dashboard)/ask", note:"Needs ANTHROPIC_API_KEY in backend/.env; default model claude-opus-5, cached tenant snapshot, 4096-token cap" },
+  { g:"p5", t:"S3 — Longitudinal analytics", s:"done", o:"Khubaib, Adnan", d:"—", w:"routers/longitudinal.py · GET /api/students/{id}/profile-history · (dashboard)/longitudinal · components/ProfileHistory.tsx", note:"No migration needed — built on versioned student_profiles" },
+
+  // ── Phase 6
+  { g:"p6", t:"Automated test suite (pytest, RLS isolation, Vitest)", s:"done", o:"Khubaib, Adnan", d:"—", w:"backend/tests/ — 69 tests (engines, adapters, auth path); tests/rls/ runs when TEST_DATABASE_URL is set · frontend/src/lib/stats.test.ts (Vitest)", note:"RLS suite needs a seeded test database to execute" },
+  { g:"p6", t:"Integration testing with real data", s:"todo", o:"Khubaib, Adnan", d:"10d", w:"Blocked on 4 Sep: shared Supabase project unreachable. Apply db/migrations/2026-09-04_*.sql, then import the RDF dump through /ingestion and run the RLS suite", note:"First thing to do once the database is back" },
+  { g:"p6", t:"Bug fixes & polish", s:"todo", o:"Khubaib, Adnan", d:"7d", w:"—" },
+  { g:"p6", t:"UI polish & final design review", s:"todo", o:"Muniba, Adnan", d:"7d", w:"—" },
+  { g:"p6", t:"FYP report writing", s:"todo", o:"All", d:"14d", w:"—" },
+  { g:"p6", t:"Demo preparation", s:"todo", o:"All", d:"7d", w:"—" },
+  { g:"p6", t:"Final presentation", s:"todo", o:"All", d:"1d", w:"—" }
+];
+
+// ── Filter state, remembered per device ────────────────────────────
+const OWNERS = ["All", "Khubaib", "Adnan", "Muniba"];
+let f = { own:"All", ph:"All" };
+try {
+  const saved = JSON.parse(localStorage.getItem("classiq-tracker-filters") || "null");
+  if (saved && typeof saved === "object") f = { own: saved.own || "All", ph: saved.ph || "All" };
+} catch (e) { /* storage unavailable — keep defaults */ }
+function persist() {
+  try { localStorage.setItem("classiq-tracker-filters", JSON.stringify(f)); } catch (e) {}
+}
+
+const el = (tag, cls, txt) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (txt != null) n.textContent = txt;
+  return n;
+};
+const groupOf = id => GROUPS.find(g => g.id === id);
+const shortPhase = id => {
+  const g = groupOf(id);
+  return g.id === "added" ? "Added" : g.name.split(" — ")[0].replace("Phase ", "P");
+};
+const matches = it =>
+  (f.own === "All" || it.o.includes(f.own) || it.o === "All") &&
+  (f.ph === "All" || it.g === f.ph);
+
+// ── Filter chips ───────────────────────────────────────────────────
+function buildChips() {
+  const ownWrap = document.getElementById("f-own");
+  OWNERS.forEach(o => {
+    const b = el("button", "chip", o === "All" ? "Everyone" : o);
+    b.type = "button";
+    b.setAttribute("aria-pressed", String(f.own === o));
+    b.addEventListener("click", () => { f.own = o; persist(); syncChips(); render(); });
+    b.dataset.k = "own"; b.dataset.v = o;
+    ownWrap.appendChild(b);
+  });
+  const phWrap = document.getElementById("f-ph");
+  [{ id:"All", n:"All" }].concat(GROUPS.map(g => ({ id:g.id, n:shortPhase(g.id) }))).forEach(p => {
+    const b = el("button", "chip", p.n);
+    b.type = "button";
+    b.setAttribute("aria-pressed", String(f.ph === p.id));
+    b.addEventListener("click", () => { f.ph = p.id; persist(); syncChips(); render(); });
+    b.dataset.k = "ph"; b.dataset.v = p.id;
+    phWrap.appendChild(b);
+  });
+}
+function syncChips() {
+  document.querySelectorAll(".chip").forEach(b => {
+    b.setAttribute("aria-pressed", String(f[b.dataset.k] === b.dataset.v));
+  });
+}
+
+// ── Board ──────────────────────────────────────────────────────────
+function renderBoard(rows) {
+  const board = document.getElementById("board");
+  board.replaceChildren();
+  ORDER.forEach(key => {
+    const inCol = rows.filter(r => r.s === key);
+    const col = el("div", "col");
+    const head = el("div", "col-head");
+    const sw = el("span", "sw"); sw.style.background = S[key].c;
+    head.append(sw, el("span", "nm", S[key].label), el("span", "ct", String(inCol.length)));
+    const body = el("div", "col-body");
+    if (!inCol.length) body.appendChild(el("div", "col-empty", "Nothing here"));
+    inCol.forEach(r => {
+      const t = el("div", "tk");
+      t.appendChild(el("div", "tk-t", r.t));
+      const meta = el("div", "tk-m");
+      meta.append(el("span", "pill ph", shortPhase(r.g)), el("span", "pill own", r.o));
+      if (r.d && r.d !== "—") meta.appendChild(el("span", "num", r.d));
+      t.appendChild(meta);
+      if (r.note) t.appendChild(el("div", "tk-w", r.note));
+      body.appendChild(t);
+    });
+    col.append(head, body);
+    board.appendChild(col);
+  });
+}
+
+// ── WBS table ──────────────────────────────────────────────────────
+function renderTable(rows) {
+  const body = document.getElementById("wbs-body");
+  body.replaceChildren();
+  GROUPS.forEach(g => {
+    const inG = rows.filter(r => r.g === g.id);
+    if (!inG.length) return;
+    const gr = el("tr", "grp");
+    const gtd = el("td");
+    gtd.colSpan = 5;
+    gtd.appendChild(document.createTextNode(g.name));
+    const doneN = inG.filter(r => r.s === "done").length;
+    gtd.appendChild(el("span", "gmeta", g.when + "  ·  " + doneN + "/" + inG.length + " done"));
+    gr.appendChild(gtd);
+    body.appendChild(gr);
+
+    inG.forEach(r => {
+      const tr = el("tr");
+      const tdT = el("td");
+      tdT.appendChild(el("strong", null, r.t));
+      if (r.note) tdT.appendChild(el("span", "note", r.note));
+      const tdS = el("td");
+      const chip = el("span", "st");
+      chip.style.background = S[r.s].bg;
+      chip.style.color = S[r.s].c;
+      const sw = el("span", "sw"); sw.style.background = S[r.s].c;
+      chip.append(sw, document.createTextNode(S[r.s].label));
+      tdS.appendChild(chip);
+      tr.append(tdT, tdS, el("td", "o", r.o), el("td", "d", r.d || "—"), el("td", "w", r.w));
+      body.appendChild(tr);
+    });
+  });
+}
+
+// ── Tiles ──────────────────────────────────────────────────────────
+function renderTiles() {
+  const total = ITEMS.length;
+  const counts = {};
+  ORDER.forEach(k => counts[k] = ITEMS.filter(i => i.s === k).length);
+  document.getElementById("t-done").innerHTML =
+    counts.done + '<span style="font-size:17px;color:var(--text-subtle)"> / ' + total + '</span>';
+  document.getElementById("t-done-n").textContent =
+    counts.partial + " partial · " + counts.stub + " stub · " + counts.todo + " not started · " + counts.defer + " deferred";
+  const bar = document.getElementById("t-bar");
+  bar.replaceChildren();
+  ORDER.forEach(k => {
+    if (!counts[k]) return;
+    const seg = el("span");
+    seg.style.width = (counts[k] / total * 100) + "%";
+    seg.style.background = S[k].c;
+    bar.appendChild(seg);
+  });
+}
+
+function render() {
+  const rows = ITEMS.filter(matches);
+  renderBoard(rows);
+  renderTable(rows);
+  document.getElementById("count-out").textContent =
+    rows.length === ITEMS.length
+      ? ITEMS.length + " items"
+      : rows.length + " of " + ITEMS.length + " items";
+}
+
+buildChips();
+renderTiles();
+render();
+
+// ── Scrollspy ──────────────────────────────────────────────────────
+const links = Array.from(document.querySelectorAll("#nav a"));
+const secs = links.map(a => document.querySelector(a.getAttribute("href"))).filter(Boolean);
+if ("IntersectionObserver" in window) {
+  const seen = new Map();
+  const io = new IntersectionObserver(entries => {
+    entries.forEach(e => seen.set(e.target.id, e.intersectionRatio));
+    let best = null, bestR = 0;
+    seen.forEach((r, id) => { if (r > bestR) { bestR = r; best = id; } });
+    if (best) links.forEach(a => a.classList.toggle("on", a.getAttribute("href") === "#" + best));
+  }, { threshold: [0, .15, .4, .75] });
+  secs.forEach(s => io.observe(s));
+}
+</script>

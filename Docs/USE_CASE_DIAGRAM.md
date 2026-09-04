@@ -2,7 +2,7 @@
 
 > AI-Powered Digital Twin Platform for Classroom Intelligence
 > Derived from `project.md` (features F1–F8, §15 User Roles) and the implemented
-> FastAPI routers + Next.js pages. Last updated 3 June 2026.
+> FastAPI routers + Next.js pages. Last updated 4 September 2026.
 
 ## Actors
 
@@ -184,8 +184,8 @@ UC_T_RECS   ..> UC_PROVIDE_RECS : <<include>>
 UC_INGEST   ..> UC_FSLSM       : <<include>>
 
 note bottom of UC_WHATIF
-  Baseline renders from real results;
-  "save named scenario" backend is still a stub (F5 partial).
+  Build, simulate, compare against the live
+  baseline and apply — complete (Sep 2026).
 end note
 @enduml
 ```
@@ -290,15 +290,18 @@ flowchart LR
 | Compute compatibility / FSLSM / graph | `engines/scoring/*`, `engines/fslsm/scorer.py`, `engines/graph/networkx_builder.py` | — |
 | View / export report | `GET /api/sections/{id}` + persisted results | `reports`, `ReportActions.tsx` |
 | Visualise social graph | Supabase-direct reads + `peer` repo | `social-graph` |
-| Compare what-if scenarios | baseline live; save-scenario **stub** | `scenarios` |
+| Compare what-if scenarios | `GET/POST /api/scenarios`, `/{id}/simulate`, `/{id}/compare`, `/{id}/apply`, `/from-section/{id}` | `scenarios` (builder + side-by-side compare) |
+| Section lifecycle (activate / archive / reopen) | `POST /api/sections/{id}/activate` · `/archive` · `/reopen`, `PUT /{id}/students` | `sections` (lifecycle bar, roster editor) |
+| Record actual outcomes / early warnings (S1) | `/api/early-warning/*` | `early-warning`, `teacher-dashboard` (data entry) |
+| Longitudinal profile history (S3) | `GET /api/analytics/longitudinal`, `GET /api/students/{id}/profile-history` | `longitudinal`, `students` (history panel) |
+| Ask ClassIQ — NL query (S2) | `POST /api/llm/query` | `ask` |
 | Teacher class view | Supabase-direct reads | `teacher-dashboard` |
-| Ingest survey & score FSLSM | `ingestion_jobs` + `engines/fslsm/scorer.py` (processor pending) | — |
+| Ingest survey & score FSLSM | `POST /api/ingestion/{rdf,csv,form,manual}`, `GET /api/ingestion/jobs` | `ingestion` (upload with dry run, manual entry, job history) |
+| Manage courses | `GET/POST/PATCH/DELETE /api/institution/courses` | `sections` (New Course) |
 | Content recommendations | external — Mr. Mubassher's FSLSM model | `teacher-dashboard` |
 
-**Status caveats reflected in the diagram:**
-- *Compare what-if scenarios* — baseline works; the save-named-scenario backend is a stub (F5 partial).
-- *Data ingestion* — ClassIQ collects its own surveys; table + sources modelled, processor
-  pending. There is **no external app** to integrate. Teaching content recommendations
-  come from **Mr. Mubassher's FSLSM model** — the one external dependency.
+**Status caveats reflected in the diagram (updated 4 Sep 2026):**
+- *Compare what-if scenarios* — complete: build (optionally cloned from a live section), simulate, compare with per-factor deltas and roster diffs, apply to live sections.
+- *Data ingestion* — complete: ClassIQ collects its own surveys; RDF bulk import, ClassIQ CSV, form-app JSON and manual entry all converge on one internal shape and score into versioned profiles. There is **no external app** to integrate. Teaching content recommendations still come from **Mr. Mubassher's FSLSM model** — the one external dependency.
 - *Student* actor — dashed; R3 post-FYP, not in current scope.
-- LLM / NL-query (S2), Early-warning (S1), Longitudinal (S3) — deferred, omitted here.
+- Stretch goals S1 (early warning), S2 (Ask ClassIQ) and S3 (longitudinal) are implemented but kept off the diagram to keep it focused on the committed scope; their traceability rows are above.

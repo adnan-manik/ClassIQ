@@ -9,7 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.deps import require_role
 from app.db.session import get_db
 from app.models.auth_user import AuthUser, UserRole
+from app.repositories import longitudinal as longitudinal_repo
 from app.repositories import students as students_repo
+from app.schemas.longitudinal import AxisScores, ProfileVersion, StudentProfileHistory
 from app.schemas.students import (
     StudentAuxShape,
     StudentDetail,
@@ -67,4 +69,63 @@ async def get_student(
         email=student.email,
         profile=StudentProfileShape.model_validate(profile) if profile else None,
         aux=StudentAuxShape.model_validate(aux) if aux else None,
+    )
+
+
+@router.get("/{student_id}/profile-history", response_model=StudentProfileHistory)
+async def profile_history(
+    student_id: UUID,
+    user: Annotated[AuthUser, Depends(_staff)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> StudentProfileHistory:
+    """S3 — every FSLSM profile version for one student, oldest first."""
+    rows = await longitudinal_repo.profile_rows(
+        db, user.institution_id, student_id=student_id
+    )
+    if not rows:
+        row = await students_repo.get_student_with_current_profile(
+            db, user.institution_id, student_id
+        )
+        if not row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Student not found"
+            )
+        student = row[0]
+        return StudentProfileHistory(
+            student_id=student.id,
+            full_name=student.full_name,
+            external_id=student.external_id,
+            versions=[],
+            shift=None,
+        )
+    student = rows[0].student
+    versions = [
+        ProfileVersion(
+            id=r.profile.id,
+            version=r.profile.version,
+            is_current=r.profile.is_current,
+            scored_at=r.profile.scored_at,
+            scoring_engine_version=r.profile.scoring_engine_version,
+            active_reflective_score=r.profile.active_reflective_score,
+            sensing_intuitive_score=r.profile.sensing_intuitive_score,
+            visual_verbal_score=r.profile.visual_verbal_score,
+            sequential_global_score=r.profile.sequential_global_score,
+            dominant_axis=r.profile.dominant_axis,
+            academic_term_id=r.term_id,
+            academic_term_name=r.term_name,
+            source=r.source,
+            submitted_at=r.submitted_at,
+        )
+        for r in rows
+    ]
+    shift = None
+    if len(rows) >= 2:
+        first, latest = rows[0].scores(), rows[-1].scores()
+        shift = AxisScores(**{a: float(latest[a] - first[a]) for a in longitudinal_repo.AXES})
+    return StudentProfileHistory(
+        student_id=student.id,
+        full_name=student.full_name,
+        external_id=student.external_id,
+        versions=versions,
+        shift=shift,
     )

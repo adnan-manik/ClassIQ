@@ -3,14 +3,29 @@
 import Badge from "@/components/Badge";
 import EmptyState from "@/components/EmptyState";
 import ScoreRing from "@/components/ScoreRing";
-import { createSection, simulateSection, updateSection } from "@/lib/api";
+import {
+  cloneScenarioFromSection,
+  createSection,
+  deleteSection,
+  simulateSection,
+  transitionSection,
+  updateSection,
+  updateSectionRoster,
+} from "@/lib/api";
 import { BRAND } from "@/lib/brand";
 import {
+  Archive,
   ArrowRightLeft,
+  CheckCircle2,
   ChevronRight,
+  FlaskConical,
   GitBranchPlus,
   Play,
   Plus,
+  RotateCcw,
+  Search,
+  Trash2,
+  UserPlus,
   Users,
   X,
 } from "lucide-react";
@@ -101,6 +116,14 @@ export default function SectionsView({
   const [savingTeacher, setSavingTeacher] = useState(false);
   const [teacherError, setTeacherError] = useState<string | null>(null);
 
+  // Roster editing + lifecycle (activate / archive / reopen / delete / what-if)
+  const [editingRoster, setEditingRoster] = useState(false);
+  const [rosterPick, setRosterPick] = useState<Set<string>>(new Set());
+  const [rosterQuery, setRosterQuery] = useState("");
+  const [savingRoster, setSavingRoster] = useState(false);
+  const [lifecycleBusy, setLifecycleBusy] = useState<string | null>(null);
+  const [lifecycleMsg, setLifecycleMsg] = useState<string | null>(null);
+
   const simulatable = sections.filter((s) => s.students.length > 0);
 
   async function handleRunSimulation(sectionId: string) {
@@ -145,6 +168,69 @@ export default function SectionsView({
         : `Simulated ${ok}; ${failures.length} failed — ${failures[0]}`,
     );
     router.refresh();
+  }
+
+  function startRosterEdit(ids: string[]) {
+    setRosterPick(new Set(ids));
+    setRosterQuery("");
+    setEditingRoster(true);
+    setLifecycleMsg(null);
+  }
+
+  async function handleSaveRoster(sectionId: string) {
+    setLifecycleMsg(null);
+    setSavingRoster(true);
+    try {
+      await updateSectionRoster(sectionId, Array.from(rosterPick));
+      setEditingRoster(false);
+      router.refresh();
+    } catch (err) {
+      setLifecycleMsg(err instanceof Error ? err.message : "Could not update roster");
+    } finally {
+      setSavingRoster(false);
+    }
+  }
+
+  async function handleTransition(
+    sectionId: string,
+    action: "activate" | "archive" | "reopen",
+  ) {
+    setLifecycleMsg(null);
+    setLifecycleBusy(action);
+    try {
+      await transitionSection(sectionId, action);
+      router.refresh();
+    } catch (err) {
+      setLifecycleMsg(err instanceof Error ? err.message : `Could not ${action}`);
+    } finally {
+      setLifecycleBusy(null);
+    }
+  }
+
+  async function handleDelete(sectionId: string) {
+    setLifecycleMsg(null);
+    setLifecycleBusy("delete");
+    try {
+      await deleteSection(sectionId);
+      setSelectedId(null);
+      router.refresh();
+    } catch (err) {
+      setLifecycleMsg(err instanceof Error ? err.message : "Could not delete section");
+    } finally {
+      setLifecycleBusy(null);
+    }
+  }
+
+  async function handleWhatIf(sectionId: string) {
+    setLifecycleMsg(null);
+    setLifecycleBusy("whatif");
+    try {
+      await cloneScenarioFromSection(sectionId);
+      router.push("/scenarios");
+    } catch (err) {
+      setLifecycleMsg(err instanceof Error ? err.message : "Could not create scenario");
+      setLifecycleBusy(null);
+    }
   }
 
   async function handleChangeTeacher(sectionId: string, teacherId: string) {
@@ -236,6 +322,8 @@ export default function SectionsView({
                     setSelectedId(isOpen ? null : sec.id);
                     setChangingTeacher(false);
                     setTeacherError(null);
+                    setEditingRoster(false);
+                    setLifecycleMsg(null);
                   }}
                   className="text-left rounded-2xl bg-white p-5 transition hover:shadow-md cursor-pointer"
                   style={{
@@ -352,6 +440,95 @@ export default function SectionsView({
                   )}
                 </div>
               </div>
+
+              {/* Lifecycle — BACKEND_ARCHITECTURE §7 state machine */}
+              <div
+                className="flex items-center gap-2 flex-wrap rounded-xl px-4 py-3"
+                style={{ backgroundColor: BRAND.subtleBg }}
+              >
+                <span
+                  className="text-xs font-semibold uppercase tracking-wider mr-1"
+                  style={{ color: BRAND.textMuted }}
+                >
+                  Lifecycle
+                </span>
+                {selected.state === "simulated" && (
+                  <>
+                    <LifecycleButton
+                      icon={CheckCircle2}
+                      label="Activate for semester"
+                      color={BRAND.teal}
+                      busy={lifecycleBusy === "activate"}
+                      disabled={lifecycleBusy !== null}
+                      onClick={() => handleTransition(selected.id, "activate")}
+                    />
+                    <LifecycleButton
+                      icon={RotateCcw}
+                      label="Reopen as draft"
+                      color={BRAND.textMuted}
+                      busy={lifecycleBusy === "reopen"}
+                      disabled={lifecycleBusy !== null}
+                      onClick={() => handleTransition(selected.id, "reopen")}
+                    />
+                  </>
+                )}
+                {selected.state === "active" && (
+                  <LifecycleButton
+                    icon={Archive}
+                    label="Archive (term over)"
+                    color={BRAND.purple}
+                    busy={lifecycleBusy === "archive"}
+                    disabled={lifecycleBusy !== null}
+                    onClick={() => handleTransition(selected.id, "archive")}
+                  />
+                )}
+                {selected.state === "draft" && (
+                  <span className="text-xs" style={{ color: BRAND.textMuted }}>
+                    Run a simulation to unlock activation.
+                  </span>
+                )}
+                {selected.state === "archived" && (
+                  <span className="text-xs" style={{ color: BRAND.textMuted }}>
+                    Archived — read only.
+                  </span>
+                )}
+                <span className="flex-1" />
+                <LifecycleButton
+                  icon={FlaskConical}
+                  label="What-if from this section"
+                  color={BRAND.indigo}
+                  busy={lifecycleBusy === "whatif"}
+                  disabled={lifecycleBusy !== null || !selected.teacherId}
+                  title={
+                    !selected.teacherId
+                      ? "Assign a teacher first"
+                      : "Clone into a scenario and open the What-If page"
+                  }
+                  onClick={() => handleWhatIf(selected.id)}
+                />
+                {selected.state !== "active" && selected.state !== "archived" && (
+                  <LifecycleButton
+                    icon={Trash2}
+                    label="Delete"
+                    color="#991B1B"
+                    busy={lifecycleBusy === "delete"}
+                    disabled={lifecycleBusy !== null}
+                    onClick={() => handleDelete(selected.id)}
+                  />
+                )}
+              </div>
+              {lifecycleMsg && (
+                <div
+                  className="text-sm rounded-xl px-4 py-3"
+                  style={{
+                    backgroundColor: "#FEE2E2",
+                    color: "#991B1B",
+                    border: "1px solid #FECACA",
+                  }}
+                >
+                  {lifecycleMsg}
+                </div>
+              )}
 
               {runError && (
                 <div
@@ -500,12 +677,120 @@ export default function SectionsView({
 
               {/* Students */}
               <div>
-                <h3
-                  className="text-sm font-semibold mb-3"
-                  style={{ color: BRAND.textMuted }}
-                >
-                  Enrolled Students ({selected.students.length})
-                </h3>
+                <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                  <h3
+                    className="text-sm font-semibold"
+                    style={{ color: BRAND.textMuted }}
+                  >
+                    Enrolled Students ({selected.students.length})
+                  </h3>
+                  {!editingRoster &&
+                    selected.state !== "active" &&
+                    selected.state !== "archived" && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          startRosterEdit(selected.students.map((s) => s.id))
+                        }
+                        className="flex items-center gap-1 text-sm font-medium"
+                        style={{ color: BRAND.teal }}
+                      >
+                        <UserPlus size={14} /> Edit roster
+                      </button>
+                    )}
+                </div>
+
+                {editingRoster && (
+                  <div
+                    className="rounded-xl p-4 mb-4 space-y-3"
+                    style={{ backgroundColor: BRAND.mintSoft, border: `1px solid ${BRAND.teal}` }}
+                  >
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <span className="text-sm font-semibold" style={{ color: BRAND.textHeading }}>
+                        {rosterPick.size} selected
+                      </span>
+                      <div
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white min-w-[220px]"
+                        style={{ border: `1px solid ${BRAND.cardBorder}` }}
+                      >
+                        <Search size={13} style={{ color: BRAND.textMuted }} />
+                        <input
+                          value={rosterQuery}
+                          onChange={(e) => setRosterQuery(e.target.value)}
+                          placeholder="Search by name or ID…"
+                          className="flex-1 bg-transparent outline-none text-sm"
+                        />
+                      </div>
+                    </div>
+                    <div
+                      className="max-h-56 overflow-auto rounded-lg p-1 bg-white"
+                      style={{ border: `1px solid ${BRAND.inputBorder}` }}
+                    >
+                      {students
+                        .filter((s) => {
+                          const q = rosterQuery.trim().toLowerCase();
+                          if (!q) return true;
+                          return (
+                            s.full_name.toLowerCase().includes(q) ||
+                            (s.external_id ?? "").toLowerCase().includes(q)
+                          );
+                        })
+                        .map((s) => (
+                          <label
+                            key={s.id}
+                            className="flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:bg-slate-50 text-sm"
+                            style={{ color: BRAND.text }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={rosterPick.has(s.id)}
+                              onChange={() =>
+                                setRosterPick((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(s.id)) next.delete(s.id);
+                                  else next.add(s.id);
+                                  return next;
+                                })
+                              }
+                            />
+                            <span className="truncate">{s.full_name}</span>
+                            {s.external_id && (
+                              <span
+                                className="ml-auto font-mono text-[11px]"
+                                style={{ color: BRAND.textMuted }}
+                              >
+                                {s.external_id}
+                              </span>
+                            )}
+                          </label>
+                        ))}
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => setEditingRoster(false)}
+                        disabled={savingRoster}
+                        className="px-4 py-2 rounded-full text-sm font-semibold"
+                        style={{ backgroundColor: "white", color: BRAND.text, border: `1px solid ${BRAND.cardBorder}` }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSaveRoster(selected.id)}
+                        disabled={savingRoster}
+                        className="px-4 py-2 rounded-full text-sm font-semibold text-white disabled:opacity-50"
+                        style={{ backgroundColor: BRAND.teal }}
+                      >
+                        {savingRoster ? "Saving…" : "Save roster"}
+                      </button>
+                      <span className="text-xs self-center" style={{ color: BRAND.textMuted }}>
+                        Saving a simulated section returns it to draft.
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 <div
                   className="rounded-xl overflow-hidden"
                   style={{ border: `1px solid ${BRAND.cardBorder}` }}
@@ -835,6 +1120,38 @@ function SelectField({
         {children}
       </select>
     </label>
+  );
+}
+
+function LifecycleButton({
+  icon: Icon,
+  label,
+  color,
+  busy,
+  disabled,
+  onClick,
+  title,
+}: {
+  icon: React.ComponentType<{ size?: number }>;
+  label: string;
+  color: string;
+  busy: boolean;
+  disabled: boolean;
+  onClick: () => void;
+  title?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-white transition hover:opacity-90 disabled:opacity-50"
+      style={{ color, border: `1px solid ${color}55` }}
+    >
+      <Icon size={13} />
+      {busy ? "Working…" : label}
+    </button>
   );
 }
 

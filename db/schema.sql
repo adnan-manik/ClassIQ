@@ -792,17 +792,85 @@ CREATE POLICY super_admin_all ON simulation_result_factors
   USING (current_role() = 'super_admin')
   WITH CHECK (current_role() = 'super_admin');
 
+
+-- ============================================================================
+-- PART 7  S1 Early Warning (added 2026-09-04 — see migrations/2026-09-04_early_warning.sql)
+-- ============================================================================
+
+CREATE TYPE warning_type     AS ENUM ('engagement', 'performance', 'compatibility');
+CREATE TYPE warning_severity AS ENUM ('low', 'medium', 'high');
+CREATE TYPE warning_status   AS ENUM ('open', 'acknowledged', 'resolved');
+
+CREATE TABLE section_outcomes (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  institution_id    UUID NOT NULL REFERENCES institutions(id) ON DELETE CASCADE,
+  section_id        UUID NOT NULL REFERENCES sections(id) ON DELETE CASCADE,
+  student_id        UUID REFERENCES students(id) ON DELETE CASCADE,   -- NULL = whole-section aggregate
+  week_no           SMALLINT NOT NULL CHECK (week_no BETWEEN 1 AND 20),
+  attendance_pct    NUMERIC(5,2) CHECK (attendance_pct BETWEEN 0 AND 100),
+  grade_pct         NUMERIC(5,2) CHECK (grade_pct BETWEEN 0 AND 100),
+  engagement_level  participation_lvl,
+  notes             TEXT,
+  recorded_by       UUID REFERENCES auth_users(id),
+  recorded_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE NULLS NOT DISTINCT (section_id, student_id, week_no)
+);
+CREATE INDEX idx_section_outcomes_section ON section_outcomes(section_id, week_no);
+CREATE INDEX idx_section_outcomes_student ON section_outcomes(student_id);
+
+CREATE TABLE early_warning_flags (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  institution_id     UUID NOT NULL REFERENCES institutions(id) ON DELETE CASCADE,
+  section_id         UUID NOT NULL REFERENCES sections(id) ON DELETE CASCADE,
+  student_id         UUID REFERENCES students(id) ON DELETE CASCADE,   -- NULL = section-level flag
+  type               warning_type NOT NULL,
+  severity           warning_severity NOT NULL,
+  status             warning_status NOT NULL DEFAULT 'open',
+  message            TEXT NOT NULL,
+  predicted_outcome  predicted_outcome,
+  metric_name        TEXT,
+  expected_value     NUMERIC(6,2),
+  actual_value       NUMERIC(6,2),
+  deviation          NUMERIC(6,2),
+  week_no            SMALLINT,
+  evaluated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  acknowledged_by    UUID REFERENCES auth_users(id),
+  acknowledged_at    TIMESTAMPTZ,
+  resolved_at        TIMESTAMPTZ,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_ew_flags_section_status ON early_warning_flags(section_id, status);
+CREATE INDEX idx_ew_flags_institution    ON early_warning_flags(institution_id, status, severity);
+
+ALTER TABLE section_outcomes    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE early_warning_flags ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY tenant_isolation ON section_outcomes
+  USING (institution_id = current_institution_id())
+  WITH CHECK (institution_id = current_institution_id());
+CREATE POLICY super_admin_all ON section_outcomes
+  USING (current_role() = 'super_admin')
+  WITH CHECK (current_role() = 'super_admin');
+
+CREATE POLICY tenant_isolation ON early_warning_flags
+  USING (institution_id = current_institution_id())
+  WITH CHECK (institution_id = current_institution_id());
+CREATE POLICY super_admin_all ON early_warning_flags
+  USING (current_role() = 'super_admin')
+  WITH CHECK (current_role() = 'super_admin');
+
+
 COMMIT;
 
 -- ============================================================================
 -- Done.
 --
 -- Counts when this completes cleanly:
---   19 enum types
---   27 tables
+--   22 enum types
+--   29 tables
 --   ~30 indexes (incl. 3 partial unique)
 --   2 RLS helper functions
---   ~46 RLS policies (tenant_isolation + super_admin_all per table)
+--   ~50 RLS policies (tenant_isolation + super_admin_all per table)
 --
 -- Next steps:
 --   1. Run db/verify.sql to sanity-check the schema.

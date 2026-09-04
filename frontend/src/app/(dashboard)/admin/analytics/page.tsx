@@ -1,3 +1,4 @@
+import AnalyticsDrilldown from "@/components/admin/AnalyticsDrilldown";
 import DepartmentsBarChart from "@/components/admin/charts/DepartmentsBarChart";
 import FslsmDistributionChart from "@/components/admin/charts/FslsmDistributionChart";
 import ScoreTrendChart from "@/components/admin/charts/ScoreTrendChart";
@@ -8,6 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 import type {
   InstitutionAnalyticsOverview,
   ScoreTrendPoint,
+  SimulationsByDepartment,
   UserRole,
 } from "@/lib/types";
 import {
@@ -34,14 +36,18 @@ export default async function AnalyticsPage() {
 
   let overview: InstitutionAnalyticsOverview | null = null;
   let trend: ScoreTrendPoint[] = [];
+  let simsByDept: SimulationsByDepartment[] = [];
   let error: string | null = null;
   try {
-    [overview, trend] = await Promise.all([
+    [overview, trend, simsByDept] = await Promise.all([
       serverFetch<InstitutionAnalyticsOverview>(
         "/api/institution/analytics/overview",
       ),
       serverFetch<ScoreTrendPoint[]>(
         "/api/institution/analytics/score-trend?weeks=12",
+      ),
+      serverFetch<SimulationsByDepartment[]>(
+        "/api/institution/analytics/simulations-by-department?days=30",
       ),
     ]);
   } catch (err) {
@@ -184,6 +190,90 @@ export default async function AnalyticsPage() {
             ) : (
               <DepartmentsBarChart data={overview.departments} />
             )}
+          </div>
+
+          <div
+            className="rounded-3xl bg-white p-6"
+            style={{ border: `1px solid ${BRAND.cardBorder}` }}
+          >
+            <h2
+              className="text-xl font-extrabold tracking-tight mb-1"
+              style={{ color: BRAND.textHeading }}
+            >
+              Simulation activity by department (last 30 days)
+            </h2>
+            <p className="text-xs mb-4" style={{ color: BRAND.textMuted }}>
+              Which departments are actually using the engine, and how their
+              sections score.
+            </p>
+            {simsByDept.length === 0 ? (
+              <p
+                className="text-sm italic py-8 text-center"
+                style={{ color: BRAND.textMuted }}
+              >
+                No departments yet.
+              </p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead style={{ backgroundColor: BRAND.subtleBg }}>
+                  <tr>
+                    <th className="text-left px-4 py-2" style={{ color: BRAND.textMuted }}>
+                      Department
+                    </th>
+                    <th className="text-right px-4 py-2" style={{ color: BRAND.textMuted }}>
+                      Runs (30d)
+                    </th>
+                    <th className="text-right px-4 py-2" style={{ color: BRAND.textMuted }}>
+                      Avg score
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {simsByDept.map((d) => (
+                    <tr
+                      key={d.department_id}
+                      style={{ borderTop: `1px solid ${BRAND.cardBorder}33` }}
+                    >
+                      <td className="px-4 py-2.5 font-medium" style={{ color: BRAND.text }}>
+                        <span
+                          className="font-mono text-xs mr-2"
+                          style={{ color: BRAND.textMuted }}
+                        >
+                          {d.department_code}
+                        </span>
+                        {d.department_name}
+                      </td>
+                      <td className="px-4 py-2.5 text-right">{d.runs_last_30d}</td>
+                      <td className="px-4 py-2.5 text-right">
+                        {d.avg_score != null ? Math.round(d.avg_score) : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          <div
+            className="rounded-3xl bg-white p-6"
+            style={{ border: `1px solid ${BRAND.cardBorder}` }}
+          >
+            <h2
+              className="text-xl font-extrabold tracking-tight mb-1"
+              style={{ color: BRAND.textHeading }}
+            >
+              Department drill-down
+            </h2>
+            <p className="text-xs mb-4" style={{ color: BRAND.textMuted }}>
+              Counts and FSLSM distribution for a single department.
+            </p>
+            <AnalyticsDrilldown
+              departments={overview.departments.map((d) => ({
+                id: d.department_id,
+                name: d.department_name,
+                code: d.department_code,
+              }))}
+            />
           </div>
         </>
       )}

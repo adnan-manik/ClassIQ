@@ -25,5 +25,5 @@ python-multipart>=0.0.20,<1.0
 # Graph — social-cohesion factor in the scoring engine
 networkx>=3.4,<4.0
 
-# LLM (deferred — S2 stretch goal)
-# anthropic>=0.40,<1.0
+# LLM — S2 natural-language query interface (Claude API, backend-only key)
+anthropic>=0.60

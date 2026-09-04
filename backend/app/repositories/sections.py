@@ -299,3 +299,91 @@ async def update_section(
             "A section with this course, term, and label already exists"
         ) from exc
     return True
+
+
+class SectionStateError(ValueError):
+    """An illegal state transition per BACKEND_ARCHITECTURE §7."""
+
+
+async def get_section_row(
+    db: AsyncSession, institution_id: UUID, section_id: UUID
+) -> Section | None:
+    return (
+        await db.execute(
+            select(Section)
+            .where(Section.id == section_id)
+            .where(Section.institution_id == institution_id)
+            .where(Section.deleted_at.is_(None))
+        )
+    ).scalar_one_or_none()
+
+
+async def reconcile_roster(
+    db: AsyncSession,
+    *,
+    institution_id: UUID,
+    section: Section,
+    student_ids: list[UUID],
+    now: datetime,
+) -> tuple[int, int]:
+    """Make the section's live roster equal `student_ids` (tenant-validated).
+    Absent students are soft-removed, new ones added, previously removed ones
+    restored. Returns (added, removed). Does not commit."""
+    wanted = set(await _valid_student_ids(db, student_ids, institution_id))
+    existing = list(
+        (
+            await db.execute(
+                select(SectionStudent).where(SectionStudent.section_id == section.id)
+            )
+        ).scalars().all()
+    )
+    by_student = {e.student_id: e for e in existing}
+    added = removed = 0
+    for e in existing:
+        if e.student_id not in wanted and e.removed_at is None:
+            e.removed_at = now
+            removed += 1
+    for sid in wanted:
+        e = by_student.get(sid)
+        if e is None:
+            db.add(SectionStudent(section_id=section.id, student_id=sid, added_at=now))
+            added += 1
+        elif e.removed_at is not None:
+            e.removed_at = None
+            e.added_at = now
+            added += 1
+    if added or removed:
+        if section.state == SectionState.simulated:
+            section.state = SectionState.draft
+        section.updated_at = now
+    return added, removed
+
+
+_TRANSITIONS: dict[SectionState, set[SectionState]] = {
+    SectionState.active: {SectionState.simulated},
+    SectionState.archived: {SectionState.active},
+    SectionState.draft: {SectionState.simulated},  # explicit "reopen"
+}
+
+
+def transition(section: Section, to_state: SectionState, now: datetime) -> None:
+    """Apply a state-machine transition or raise SectionStateError."""
+    allowed = _TRANSITIONS.get(to_state, set())
+    if section.state not in allowed:
+        raise SectionStateError(
+            f"Cannot move a {section.state.value} section to {to_state.value}"
+            + (
+                " — run a simulation first"
+                if to_state == SectionState.active and section.state == SectionState.draft
+                else ""
+            )
+        )
+    section.state = to_state
+    section.updated_at = now
+
+
+async def soft_delete_section(db: AsyncSession, section: Section, now: datetime) -> None:
+    if section.state in (SectionState.active,):
+        raise SectionStateError("Archive an active section instead of deleting it")
+    section.deleted_at = now
+    section.updated_at = now

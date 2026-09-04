@@ -1,6 +1,6 @@
 # ClassIQ — Backend Architecture
 
-**Status:** Draft v1 — 2026-05-11
+**Status:** Draft v1 — 2026-05-11 · §5, §11 and §13 updated to the as-built state on 2026-09-04
 **Owner:** Khubaib (backend lead)
 **Stack:** Python 3.12 · FastAPI · SQLAlchemy 2.x · Pydantic v2 · NetworkX · Supabase Postgres · Anthropic SDK
 **Related:** [DATA_MODEL.md](DATA_MODEL.md) · [project.md](../project.md)
@@ -285,6 +285,7 @@ flowchart TB
 - **Idempotent.** `UNIQUE (instrument_id, external_response_id)` on `survey_responses` means re-running the same import is safe.
 - **Source-agnostic.** Adapters normalize to one internal shape — the pipeline downstream is unaware of the origin.
 - **Re-scoreable.** Raw answers stored separately from derived scores. If the FSLSM scorer changes, re-run scoring without re-collecting responses.
+- **As built (Sep 2026):** adapters in `app/ingestion/` (`rdf_parser`, `csv_adapter`, `form_app_adapter`, `manual_admin_adapter`) normalise to `InternalResponse`; `services/ingestion_service.py` runs the pipeline with a savepoint per response so one bad row never sinks a batch, and `dry_run=True` validates without writing. The default ILS instrument is defined in `app/ingestion/ils_instrument.py` and seeded on first use (also `db/migrations/2026-09-04_seed_ils_instrument.sql`).
 
 ---
 
@@ -465,27 +466,45 @@ sequenceDiagram
 
 ---
 
-## 11. API Surface (preview — full spec is a follow-up doc)
+## 11. API Surface (as built — 4 September 2026)
+
+Every route is under `/api` except the health probes. Roles: **staff** = hod, institution_admin, super_admin. The live OpenAPI document at `/docs` is authoritative.
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| `POST` | `/auth/session` | public | Exchange Supabase session for backend access |
+| `GET` | `/health`, `/ready` | public | Liveness / DB readiness |
 | `GET` | `/api/me` | any | Current user + role + institution |
-| `GET` | `/api/students` | hod | List students in HoD's scope |
-| `GET` | `/api/students/{id}` | hod, teacher (own) | Profile + versions |
-| `GET` | `/api/teachers` | hod | List teachers |
-| `GET` | `/api/sections` | hod, teacher (own) | List sections |
-| `POST` | `/api/sections` | hod | Create section |
-| `PATCH` | `/api/sections/{id}` | hod | Edit (drops state to draft) |
-| `POST` | `/api/sections/{id}/simulate` | hod | Run scoring on a draft section |
-| `POST` | `/api/scenarios` | hod | Create what-if scenario |
-| `POST` | `/api/scenarios/{id}/simulate` | hod | Run scoring on all scenario_sections |
-| `GET` | `/api/scenarios/{id}/compare` | hod | Side-by-side comparison data |
-| `GET` | `/api/reports/sections/{id}` | hod, teacher (own) | F6 report payload |
-| `POST` | `/api/ingestion/rdf` | super_admin | Trigger RDF import job |
-| `GET` | `/api/ingestion/jobs/{id}` | super_admin, hod | Job status + summary |
-| `POST` | `/api/llm/query` | hod | S2 NL query (stretch) |
-| `GET` | `/api/admin/institutions` | super_admin | Tenant management |
+| `GET` | `/api/students`, `/api/students/{id}` | staff | Roster + current profile |
+| `GET` | `/api/students/{id}/profile-history` | staff | S3 — every profile version with term + source |
+| `GET` | `/api/teachers`, `/api/teachers/{id}` | staff | Teachers + current profile |
+| `GET POST` | `/api/sections` | staff | List (with latest result) / create draft |
+| `GET PATCH DELETE` | `/api/sections/{id}` | staff | Detail / label + teacher / soft delete |
+| `PUT` | `/api/sections/{id}/students` | staff | Replace roster (simulated → draft) |
+| `POST` | `/api/sections/{id}/simulate` | staff | Run the engine, persist result |
+| `POST` | `/api/sections/{id}/activate` · `/archive` · `/reopen` | staff | §7 state machine |
+| `GET POST` | `/api/scenarios` | staff | List / create what-if scenario |
+| `POST` | `/api/scenarios/from-section/{section_id}` | staff | Clone a live section into a scenario |
+| `GET PATCH DELETE` | `/api/scenarios/{id}` | staff | Detail / edit / delete |
+| `POST` | `/api/scenarios/{id}/simulate` | staff | Score every scenario section (one run) |
+| `GET` | `/api/scenarios/{id}/compare` | staff | Side-by-side vs live baseline, factor deltas, roster diff |
+| `POST` | `/api/scenarios/{id}/apply` | staff | Copy onto live sections + re-score |
+| `GET` | `/api/reports/sections/{id}` | staff, teacher (own) | F6 report payload + run history |
+| `POST` | `/api/ingestion/rdf` · `/csv` | staff | Bulk import (multipart; `dry_run` form field) |
+| `POST` | `/api/ingestion/form` · `/manual` | staff | Form-app JSON / one typed submission |
+| `GET` | `/api/ingestion/jobs`, `/jobs/{id}`, `/instrument` | staff | Job history, one job, the 44-question ILS |
+| `GET` | `/api/analytics/longitudinal` | staff | S3 cohort drift per term / version, top shifts |
+| `GET` | `/api/early-warning/overview`, `/flags` | staff | S1 dashboard + flag list |
+| `PATCH` | `/api/early-warning/flags/{id}` | staff | acknowledge / resolve / reopen |
+| `GET POST` | `/api/early-warning/sections/{id}/outcomes` | staff, teacher (own) | Read / record weekly actuals |
+| `POST` | `/api/early-warning/sections/{id}/evaluate` | staff, teacher (own) | Re-run the comparator |
+| `GET` | `/api/llm/status` · `POST /api/llm/query` | staff | S2 Ask ClassIQ |
+| `GET POST PATCH` | `/api/admin/institutions` | super_admin | Tenant management |
+| `GET` | `/api/admin/system/overview` · `/audit` · `/ingestion-jobs` | super_admin | Platform-wide views |
+| `GET POST PATCH DELETE` | `/api/institution/departments` (+ `/hods`) | admin | Departments, HoD assignment |
+| `GET POST PATCH` | `/api/institution/users` (+ `/import/preview`, `/import/commit`) | admin | User provisioning, CSV import |
+| `GET POST PATCH DELETE` | `/api/institution/courses` | staff | Course catalogue (audited) |
+| `GET` | `/api/institution/analytics/overview` · `/departments/{id}` · `/score-trend` · `/simulations-by-department` | admin | Institution analytics |
+| `GET` | `/api/institution/audit` | admin | Tenant audit tail |
 
 Pydantic schemas live in `app/schemas/` and mirror the DB shapes from DATA_MODEL with optional fields per route.
 
@@ -508,9 +527,10 @@ Pydantic schemas live in `app/schemas/` and mirror the DB shapes from DATA_MODEL
 
 ## 13. Open Items
 
-- **Pydantic schema catalogue** — full request/response shapes per endpoint (follow-up doc).
-- **Per-role RLS policy matrix** — currently described in [DATA_MODEL.md §12](DATA_MODEL.md); needs explicit per-table/per-role read/write table.
-- **Scoring weights starting values** — F2 weights aren't finalized; seed `scoring_configs` with a default and iterate.
-- **NetworkX type_factor weights** for edge type → numeric — currently illustrative in §6; tune empirically.
-- **Job queue** — for now ingestion + simulation run synchronously inside the request. If runs exceed ~3s, introduce `arq` or `RQ` with Redis. Defer.
-- **Health/readiness endpoints** — `/health` (liveness) + `/ready` (DB reachable, env present). Trivial; specify in API spec follow-up.
+- **Apply the 2026-09-04 migrations** (`db/migrations/2026-09-04_seed_ils_instrument.sql`, `2026-09-04_early_warning.sql`) to the shared Supabase project — it was unreachable when they were written; both are idempotent.
+- **Per-role RLS policy matrix** — currently described in [DATA_MODEL.md §12](DATA_MODEL.md); needs explicit per-table/per-role read/write table. `tests/rls/test_rls_isolation.py` is the executable check once `TEST_DATABASE_URL` points at a seeded database.
+- **Scoring weights starting values** — defaults are seeded (0.40 / 0.25 / 0.20 / 0.15); tune with Mr. Mubassher's input.
+- **Early-warning expectation bands** (`engines/early_warning.py::EXPECTED`) — first-pass thresholds; calibrate against a real semester.
+- **NetworkX type_factor weights** for edge type → numeric — tune empirically.
+- **Job queue** — ingestion + simulation still run synchronously inside the request; the 176-student RDF import completes well inside a request, but introduce `arq` / `RQ` if bulk imports grow.
+- **LLM cost telemetry** — `/api/llm/query` logs token usage to `audit_logs`; add a per-institution monthly cap if the stretch goal ships to real users.

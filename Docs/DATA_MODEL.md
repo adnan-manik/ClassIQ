@@ -574,6 +574,69 @@ CREATE TABLE ingestion_jobs (
 
 ---
 
+## 11b. Tables — Group I: Early Warning (S1, added 2026-09-04)
+
+Actual outcomes recorded during the live semester and the flags raised when they diverge
+from the predicted outcome. Both tables are tenant-scoped with the standard RLS pair.
+
+### `section_outcomes`
+```sql
+CREATE TYPE warning_type     AS ENUM ('engagement', 'performance', 'compatibility');
+CREATE TYPE warning_severity AS ENUM ('low', 'medium', 'high');
+CREATE TYPE warning_status   AS ENUM ('open', 'acknowledged', 'resolved');
+
+CREATE TABLE section_outcomes (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  institution_id    UUID NOT NULL REFERENCES institutions(id) ON DELETE CASCADE,
+  section_id        UUID NOT NULL REFERENCES sections(id) ON DELETE CASCADE,
+  student_id        UUID REFERENCES students(id) ON DELETE CASCADE,   -- NULL = whole-section aggregate
+  week_no           SMALLINT NOT NULL CHECK (week_no BETWEEN 1 AND 20),
+  attendance_pct    NUMERIC(5,2) CHECK (attendance_pct BETWEEN 0 AND 100),
+  grade_pct         NUMERIC(5,2) CHECK (grade_pct BETWEEN 0 AND 100),
+  engagement_level  participation_lvl,
+  notes             TEXT,
+  recorded_by       UUID REFERENCES auth_users(id),
+  recorded_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE NULLS NOT DISTINCT (section_id, student_id, week_no)
+);
+```
+
+### `early_warning_flags`
+```sql
+CREATE TABLE early_warning_flags (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  institution_id     UUID NOT NULL REFERENCES institutions(id) ON DELETE CASCADE,
+  section_id         UUID NOT NULL REFERENCES sections(id) ON DELETE CASCADE,
+  student_id         UUID REFERENCES students(id) ON DELETE CASCADE,   -- NULL = section-level flag
+  type               warning_type NOT NULL,
+  severity           warning_severity NOT NULL,
+  status             warning_status NOT NULL DEFAULT 'open',
+  message            TEXT NOT NULL,
+  predicted_outcome  predicted_outcome,
+  metric_name        TEXT,            -- attendance_pct | grade_pct | engagement | class_grade
+  expected_value     NUMERIC(6,2),
+  actual_value       NUMERIC(6,2),
+  deviation          NUMERIC(6,2),    -- actual − expected (negative = below expectation)
+  week_no            SMALLINT,
+  evaluated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  acknowledged_by    UUID REFERENCES auth_users(id),
+  acknowledged_at    TIMESTAMPTZ,
+  resolved_at        TIMESTAMPTZ,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+**Evaluation rule** (`backend/app/engines/early_warning.py`): the predicted outcome maps to
+an expectation band (High: attendance ≥ 85 %, grade ≥ 70 %; Medium: 75 / 55; Low: 65 / 45).
+Per student, the last three recorded weeks are averaged; a value under the band raises an
+`engagement` (attendance / engagement level) or `performance` (grade) flag whose severity
+follows the shortfall (≥ 20 pts high, ≥ 10 medium, else low). When ≥ 40 % of assessed
+students are under the grade band, or the class mean is ≥ 10 pts under it, one section-level
+`compatibility` flag is raised. Re-evaluation refreshes open flags in place and auto-resolves
+those no longer produced.
+
+---
+
 ## 12. RLS Strategy
 
 All tenant-scoped tables enable RLS and use one helper function:
@@ -962,7 +1025,7 @@ erDiagram
 
 ## 17. Counts
 
-- **27 tables**, **19 enum types**, ~30 indexes, 5 verification queries.
+- **29 tables**, **22 enum types**, ~34 indexes, 5 verification queries (S1 added `section_outcomes`, `early_warning_flags` and three enums on 2026-09-04).
 - Touches all 8 committed features (F1–F8) and reserves shape for stretch goals (S1–S3) + post-FYP R1–R4 without future migrations.
 
 ---
@@ -987,3 +1050,5 @@ without a rebuild.
 | Date | File | Change |
 |------|------|--------|
 | 2026-06-03 | `2026-06-03_drop_phd_pipeline_source.sql` | Removed `phd_pipeline` from the `response_source` enum; existing rows remapped to `form_app` (columns: `ingestion_jobs.source`, `survey_responses.source`). |
+| 2026-09-04 | `2026-09-04_seed_ils_instrument.sql` | Seeds the default FSLSM instrument (`FSLSM-ILS-Algorithms` v`27Jan24`) and its 44 questions with axis + RDF-property mapping. Generated from `backend/app/ingestion/ils_instrument.py`; the ingestion API also seeds these rows on first use. Idempotent. |
+| 2026-09-04 | `2026-09-04_early_warning.sql` | S1: adds `warning_type` / `warning_severity` / `warning_status` enums and the `section_outcomes` + `early_warning_flags` tables with RLS (§11b). Idempotent. **Not yet applied** to the shared project as of 4 Sep 2026 (project unreachable). |

@@ -13,7 +13,6 @@ import {
   Building2,
   GitBranchPlus,
   GraduationCap,
-  LayoutDashboard,
   TrendingUp,
   Users,
 } from "lucide-react";

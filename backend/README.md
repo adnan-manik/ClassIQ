@@ -28,12 +28,31 @@ Open <http://localhost:8000/docs> for the live OpenAPI explorer.
 
 ## What's wired today
 
-| Endpoint | Auth | Purpose |
+| Router | Prefix | Purpose |
 |---|---|---|
-| `GET /health` | public | Liveness probe |
-| `GET /api/me` | Bearer JWT | Returns the current user's id, role, institution, full_name, email |
+| `health` | `/health`, `/ready` | liveness / DB readiness |
+| `me` | `/api/me` | current user + role + institution |
+| `students`, `teachers` | `/api/students`, `/api/teachers` | rosters + profiles; `/api/students/{id}/profile-history` (S3) |
+| `sections` | `/api/sections` | create / edit / roster / simulate / activate / archive / reopen / delete (audited) |
+| `scenarios` | `/api/scenarios` | F5 what-if: create, clone from section, simulate, compare, apply |
+| `ingestion` | `/api/ingestion` | RDF / CSV (dry-run + commit), form-app JSON, manual entry, jobs, instrument |
+| `reports` | `/api/reports/sections/{id}` | F6 report payload (staff, or the assigned teacher) |
+| `longitudinal` | `/api/analytics/longitudinal` | S3 cohort drift per term / version, top shifts |
+| `early_warning` | `/api/early-warning` | S1 outcomes, evaluate, flags, overview |
+| `llm` | `/api/llm` | S2 Ask ClassIQ (`status`, `query`) — needs `ANTHROPIC_API_KEY` |
+| `admin_*` | `/api/admin/*` | super-admin: institutions, system overview / audit / ingestion jobs |
+| `institution_*` | `/api/institution/*` | departments, users (+ CSV import), courses, analytics, audit |
 
-The rest of the routes from [BACKEND_ARCHITECTURE §11](../Docs/BACKEND_ARCHITECTURE.md) are stubbed by the folder layout (`app/routers/`, `app/services/`, `app/engines/`, etc.) and land in subsequent passes.
+Every mutation writes an `audit_logs` row. See `Docs/BACKEND_ARCHITECTURE.md` §11 for the
+full table and `tests/` for the executable spec.
+
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest -q                       # engines, adapters, auth path — no DB needed
+TEST_DATABASE_URL=… pytest tests/rls -q   # RLS isolation against a real Postgres
+```
 
 ## Where to find the JWT secret
 

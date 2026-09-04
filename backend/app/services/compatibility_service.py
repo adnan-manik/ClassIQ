@@ -1,9 +1,11 @@
-"""Orchestrates F2 — load section inputs, run the engine, persist the result.
+"""Orchestrates F2 — load roster inputs, run the engine, persist the result.
 
-This is the service layer between the /api/sections/{id}/simulate route
-and the pure-compute engine in app/engines/scoring/.
+This is the service layer between the simulate routes and the pure-compute
+engine in app/engines/scoring/. Real sections (F4) and scenario sections (F5)
+share one code path: `load_roster_inputs` → `score_roster`.
 """
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
@@ -31,56 +33,52 @@ ENGINE_VERSION = "0.1.0"
 
 
 class SimulateError(Exception):
-    """Raised when the section can't be simulated (missing data, etc.)."""
+    """Raised when a roster can't be simulated (missing data, etc.)."""
 
 
-async def simulate_section(
+@dataclass
+class RosterInputs:
+    """Everything the engine needs for one roster, loaded tenant-scoped."""
+
+    student_ids: list[UUID]
+    teacher_profile: TeacherProfile | None
+    student_profiles: list[StudentProfile]
+    aux_profiles: list[StudentAuxProfile]
+    peer_relationships: list[PeerRelationship]
+    weights: dict[str, float]
+    scoring_config_id: UUID
+
+
+@dataclass(frozen=True)
+class RosterScore:
+    output: ScoringOutput
+    recommended_teacher_id: UUID | None
+    scoring_config_id: UUID
+
+
+async def load_roster_inputs(
     db: AsyncSession,
     *,
     institution_id: UUID,
-    section_id: UUID,
-    triggered_by: UUID,
-) -> tuple[SimulationRun, SimulationResult, list[SimulationResultFactor]]:
-    """Run the scoring engine on `section_id` and persist the result."""
-    # ── 1. Load section ──────────────────────────────────────────────────
-    sec = (
-        await db.execute(
-            select(Section)
-            .where(Section.id == section_id)
-            .where(Section.institution_id == institution_id)
-            .where(Section.deleted_at.is_(None))
-        )
-    ).scalar_one_or_none()
-    if not sec:
-        raise SimulateError(f"Section {section_id} not found")
+    academic_term_id: UUID,
+    teacher_id: UUID | None,
+    student_ids: list[UUID],
+) -> RosterInputs:
+    """Load profiles, aux rows, peer edges and the scoring config for a roster."""
+    if not student_ids:
+        raise SimulateError("No enrolled students")
 
-    # ── 2. Teacher profile (current) ─────────────────────────────────────
     teacher_profile: TeacherProfile | None = None
-    if sec.teacher_id:
+    if teacher_id:
         teacher_profile = (
             await db.execute(
                 select(TeacherProfile)
-                .where(TeacherProfile.teacher_id == sec.teacher_id)
+                .where(TeacherProfile.teacher_id == teacher_id)
                 .where(TeacherProfile.is_current.is_(True))
                 .where(TeacherProfile.deleted_at.is_(None))
             )
         ).scalar_one_or_none()
 
-    # ── 3. Enrolled students ─────────────────────────────────────────────
-    student_ids = list(
-        (
-            await db.execute(
-                select(SectionStudent.student_id)
-                .where(SectionStudent.section_id == sec.id)
-                .where(SectionStudent.removed_at.is_(None))
-            )
-        ).scalars().all()
-    )
-
-    if not student_ids:
-        raise SimulateError("Section has no enrolled students")
-
-    # ── 4. Current student profiles ──────────────────────────────────────
     student_profiles = list(
         (
             await db.execute(
@@ -92,7 +90,6 @@ async def simulate_section(
         ).scalars().all()
     )
 
-    # ── 5. Aux profiles ──────────────────────────────────────────────────
     aux_profiles = list(
         (
             await db.execute(
@@ -103,7 +100,7 @@ async def simulate_section(
                 # aux profiles, so participation would score against an empty
                 # set even though the roster view shows those profiles.
                 .where(
-                    (StudentAuxProfile.academic_term_id == sec.academic_term_id)
+                    (StudentAuxProfile.academic_term_id == academic_term_id)
                     | (StudentAuxProfile.academic_term_id.is_(None))
                 )
                 .where(StudentAuxProfile.is_current.is_(True))
@@ -112,13 +109,12 @@ async def simulate_section(
         ).scalars().all()
     )
 
-    # ── 6. Peer relationships within the section ────────────────────────
     rels = list(
         (
             await db.execute(
                 select(PeerRelationship)
                 .where(PeerRelationship.institution_id == institution_id)
-                .where(PeerRelationship.academic_term_id == sec.academic_term_id)
+                .where(PeerRelationship.academic_term_id == academic_term_id)
                 .where(PeerRelationship.from_student_id.in_(student_ids))
                 .where(PeerRelationship.to_student_id.in_(student_ids))
                 .where(PeerRelationship.deleted_at.is_(None))
@@ -126,7 +122,6 @@ async def simulate_section(
         ).scalars().all()
     )
 
-    # ── 7. Scoring config ────────────────────────────────────────────────
     # simulation_runs.scoring_config_id is NOT NULL + a real FK, so we must
     # reference an existing config. Fabricating a UUID here would violate the
     # FK and 500 with an opaque error — fail cleanly instead.
@@ -136,100 +131,38 @@ async def simulate_section(
             "No scoring configuration is available. Seed a default "
             "scoring_config (global or for this institution) before simulating."
         )
-    weights = cfg.weights
-    scoring_config_id = cfg.id
 
-    # ── 8. Run engine ───────────────────────────────────────────────────
-    output: ScoringOutput = score_section(
-        ScoringInput(
-            section_student_ids=student_ids,
-            teacher_profile=teacher_profile,
-            student_profiles=student_profiles,
-            aux_profiles=aux_profiles,
-            peer_relationships=rels,
-            weights=weights,
-        )
-    )
-
-    # ── 9. Recommend a better teacher if possible ────────────────────────
-    recommended_id = await _recommend_teacher(
-        db,
-        institution_id=institution_id,
+    return RosterInputs(
+        student_ids=list(student_ids),
+        teacher_profile=teacher_profile,
         student_profiles=student_profiles,
         aux_profiles=aux_profiles,
         peer_relationships=rels,
-        student_ids=student_ids,
-        current_score=output.compatibility_score,
-        weights=weights,
+        weights=cfg.weights,
+        scoring_config_id=cfg.id,
     )
 
-    # ── 10. Persist ──────────────────────────────────────────────────────
-    now = datetime.now(timezone.utc)
-    run = SimulationRun(
-        id=uuid4(),
-        institution_id=institution_id,
-        scenario_id=None,
-        section_id=section_id,
-        scoring_config_id=scoring_config_id,
-        engine_version=ENGINE_VERSION,
-        status=SimRunStatus.succeeded,
-        started_at=now,
-        finished_at=now,
-        triggered_by=triggered_by,
-        created_at=now,
-    )
-    db.add(run)
 
-    result = SimulationResult(
-        id=uuid4(),
-        simulation_run_id=run.id,
-        scenario_section_id=None,
-        section_id=section_id,
-        compatibility_score=output.compatibility_score,
-        predicted_outcome=PredictedOutcome(output.predicted_outcome),
-        social_graph_impact=SocialImpact(output.social_graph_impact),
-        style_distribution=output.style_distribution,
-        recommended_teacher_id=recommended_id,
-        created_at=now,
-    )
-    db.add(result)
-
-    factor_rows: list[SimulationResultFactor] = []
-    for f in output.factors:
-        factor_rows.append(
-            SimulationResultFactor(
-                id=uuid4(),
-                simulation_result_id=result.id,
-                factor_name=f.name,
-                score=f.score,
-                weight=f.weight,
-                impact=FactorImpact(f.impact),
-            )
+def run_engine(inputs: RosterInputs, teacher_profile: TeacherProfile | None = None) -> ScoringOutput:
+    """Run the pure engine on loaded inputs (optionally with a different teacher)."""
+    return score_section(
+        ScoringInput(
+            section_student_ids=inputs.student_ids,
+            teacher_profile=teacher_profile if teacher_profile is not None else inputs.teacher_profile,
+            student_profiles=inputs.student_profiles,
+            aux_profiles=inputs.aux_profiles,
+            peer_relationships=inputs.peer_relationships,
+            weights=inputs.weights,
         )
-    db.add_all(factor_rows)
-
-    # Bump the section state out of `draft`
-    if sec.state == SectionState.draft:
-        await db.execute(
-            update(Section)
-            .where(Section.id == section_id)
-            .values(state=SectionState.simulated, updated_at=now)
-        )
-
-    await db.commit()
-    return run, result, factor_rows
+    )
 
 
-async def _recommend_teacher(
+async def recommend_teacher(
     db: AsyncSession,
     *,
     institution_id: UUID,
-    student_profiles: list[StudentProfile],
-    aux_profiles: list[StudentAuxProfile],
-    peer_relationships: list[PeerRelationship],
-    student_ids: list[UUID],
+    inputs: RosterInputs,
     current_score: int,
-    weights: dict[str, float],
 ) -> UUID | None:
     """Try every other teacher in the institution; return the id whose hypothetical
     score beats the current one by ≥3 points. None if nobody does better."""
@@ -253,17 +186,153 @@ async def _recommend_teacher(
     for teacher, profile in teachers:
         if profile is None:
             continue
-        out = score_section(
-            ScoringInput(
-                section_student_ids=student_ids,
-                teacher_profile=profile,
-                student_profiles=student_profiles,
-                aux_profiles=aux_profiles,
-                peer_relationships=peer_relationships,
-                weights=weights,
-            )
-        )
+        out = run_engine(inputs, teacher_profile=profile)
         if out.compatibility_score > best_score + 2:
             best_score = out.compatibility_score
             best_id = teacher.id
     return best_id
+
+
+async def score_roster(
+    db: AsyncSession,
+    *,
+    institution_id: UUID,
+    academic_term_id: UUID,
+    teacher_id: UUID | None,
+    student_ids: list[UUID],
+) -> RosterScore:
+    """Load + score one roster and find a better teacher if one exists.
+    Does NOT persist anything."""
+    inputs = await load_roster_inputs(
+        db,
+        institution_id=institution_id,
+        academic_term_id=academic_term_id,
+        teacher_id=teacher_id,
+        student_ids=student_ids,
+    )
+    output = run_engine(inputs)
+    recommended = await recommend_teacher(
+        db,
+        institution_id=institution_id,
+        inputs=inputs,
+        current_score=output.compatibility_score,
+    )
+    return RosterScore(
+        output=output,
+        recommended_teacher_id=recommended,
+        scoring_config_id=inputs.scoring_config_id,
+    )
+
+
+def build_result_rows(
+    *,
+    run_id: UUID,
+    output: ScoringOutput,
+    recommended_teacher_id: UUID | None,
+    section_id: UUID | None,
+    scenario_section_id: UUID | None,
+    now: datetime,
+) -> tuple[SimulationResult, list[SimulationResultFactor]]:
+    """Construct (unsaved) result + factor rows for a run."""
+    result = SimulationResult(
+        id=uuid4(),
+        simulation_run_id=run_id,
+        scenario_section_id=scenario_section_id,
+        section_id=section_id,
+        compatibility_score=output.compatibility_score,
+        predicted_outcome=PredictedOutcome(output.predicted_outcome),
+        social_graph_impact=SocialImpact(output.social_graph_impact),
+        style_distribution=output.style_distribution,
+        recommended_teacher_id=recommended_teacher_id,
+        created_at=now,
+    )
+    factor_rows = [
+        SimulationResultFactor(
+            id=uuid4(),
+            simulation_result_id=result.id,
+            factor_name=f.name,
+            score=f.score,
+            weight=f.weight,
+            impact=FactorImpact(f.impact),
+        )
+        for f in output.factors
+    ]
+    return result, factor_rows
+
+
+async def simulate_section(
+    db: AsyncSession,
+    *,
+    institution_id: UUID,
+    section_id: UUID,
+    triggered_by: UUID,
+) -> tuple[SimulationRun, SimulationResult, list[SimulationResultFactor]]:
+    """Run the scoring engine on `section_id` and persist the result."""
+    sec = (
+        await db.execute(
+            select(Section)
+            .where(Section.id == section_id)
+            .where(Section.institution_id == institution_id)
+            .where(Section.deleted_at.is_(None))
+        )
+    ).scalar_one_or_none()
+    if not sec:
+        raise SimulateError(f"Section {section_id} not found")
+
+    student_ids = list(
+        (
+            await db.execute(
+                select(SectionStudent.student_id)
+                .where(SectionStudent.section_id == sec.id)
+                .where(SectionStudent.removed_at.is_(None))
+            )
+        ).scalars().all()
+    )
+    if not student_ids:
+        raise SimulateError("Section has no enrolled students")
+
+    scored = await score_roster(
+        db,
+        institution_id=institution_id,
+        academic_term_id=sec.academic_term_id,
+        teacher_id=sec.teacher_id,
+        student_ids=student_ids,
+    )
+
+    now = datetime.now(timezone.utc)
+    run = SimulationRun(
+        id=uuid4(),
+        institution_id=institution_id,
+        scenario_id=None,
+        section_id=section_id,
+        scoring_config_id=scored.scoring_config_id,
+        engine_version=ENGINE_VERSION,
+        status=SimRunStatus.succeeded,
+        started_at=now,
+        finished_at=now,
+        triggered_by=triggered_by,
+        created_at=now,
+    )
+    db.add(run)
+
+    result, factor_rows = build_result_rows(
+        run_id=run.id,
+        output=scored.output,
+        recommended_teacher_id=scored.recommended_teacher_id,
+        section_id=section_id,
+        scenario_section_id=None,
+        now=now,
+    )
+    db.add(result)
+    db.add_all(factor_rows)
+
+    # Bump the section state out of `draft`
+    if sec.state == SectionState.draft:
+        await db.execute(
+            update(Section)
+            .where(Section.id == section_id)
+            .values(state=SectionState.simulated, updated_at=now)
+        )
+
+    await db.commit()
+    return run, result, factor_rows

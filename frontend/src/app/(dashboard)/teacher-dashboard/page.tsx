@@ -1,5 +1,6 @@
 import Badge from "@/components/Badge";
 import EmptyState from "@/components/EmptyState";
+import OutcomeEntry from "@/components/OutcomeEntry";
 import SignOutButton from "@/components/SignOutButton";
 import { BRAND } from "@/lib/brand";
 import { createClient } from "@/lib/supabase/server";
@@ -339,6 +340,17 @@ export default async function TeacherDashboardPage() {
                     </tbody>
                   </table>
                 </div>
+                {/* S1 — record weekly outcomes for this class */}
+                {(cls.state === "active" || cls.state === "simulated") && (
+                  <div className="mt-6">
+                    <OutcomeEntry
+                      sectionId={cls.id}
+                      roster={cls.roster.map((r) => ({ id: r.id, full_name: r.full_name }))}
+                      title="Record this week's attendance and grades"
+                      hint="Real data is compared with the predicted outcome; divergences raise early-warning flags for your HoD."
+                    />
+                  </div>
+                )}
               </div>
             ))}
           </div>
