@@ -333,8 +333,8 @@ footer code { font-size:11.5px; background:var(--surface-2); padding:1px 5px; bo
       <div class="legend-row"><span class="sw" style="background:var(--defer)"></span>Deferred by choice</div>
     </div>
     <div class="sync">
-      Synced to <b>working tree</b> after <b>92286f6</b><br>
-      4 Sep 2026 · branch <b>development</b> · not yet committed
+      Synced to <b>2b6a28f</b><br>
+      4 Sep 2026 · branch <b>development</b> · pushed
     </div>
   </aside>
 
@@ -351,9 +351,8 @@ footer code { font-size:11.5px; background:var(--surface-2); padding:1px 5px; bo
         (the 176-student RDF dump parses end to end), section lifecycle and roster editing, an
         audited course catalogue, the S1 early-warning system, S3 longitudinal analytics, the S2
         <em>Ask ClassIQ</em> assistant, and a test suite (69 pytest + 8 Vitest, tsc and eslint
-        clean). What is left is <strong>operational</strong>: commit the work, apply two migrations
-        to the shared Supabase project (unreachable today), run against real data, and write the
-        report.</p>
+        clean). What is left is <strong>operational</strong>: apply two migrations to the shared
+        Supabase project (unreachable today), run against real data, and write the report.</p>
       </div>
 
       <div class="tiles">
@@ -388,15 +387,6 @@ footer code { font-size:11.5px; background:var(--surface-2); padding:1px 5px; bo
       <div class="card attention">
         <h3>Needs attention</h3>
         <ul class="att-list">
-          <li>
-            <span class="stripe" style="background:var(--risk)"></span>
-            <div>
-              <div class="t">Nothing from 4 September is committed yet</div>
-              <div class="d">The whole FYP-2 build — scenarios, ingestion, lifecycle, S1/S2/S3, tests,
-              docs — sits in the working tree on top of <code>92286f6</code>. Review and commit it
-              (and <code>Docs/tracker.html</code>, still untracked) before anything else.</div>
-            </div>
-          </li>
           <li>
             <span class="stripe" style="background:var(--risk)"></span>
             <div>
@@ -535,7 +525,7 @@ footer code { font-size:11.5px; background:var(--surface-2); padding:1px 5px; bo
           </div>
 
           <div class="commits">
-            <span class="lbl">Commits <span style="color:var(--text-subtle);font-weight:400">12 over 6 days</span></span>
+            <span class="lbl">Commits <span style="color:var(--text-subtle);font-weight:400">13 over 7 days</span></span>
             <div class="lane">
               <span class="cdot" style="left:3.93%" title="13 Apr 2026 — 1 commit: prototype"></span>
               <span class="cdot" style="left:13.44%" title="12 May 2026 — 1 commit: flatten prototype into the monorepo"></span>
@@ -543,6 +533,7 @@ footer code { font-size:11.5px; background:var(--surface-2); padding:1px 5px; bo
               <span class="cdot" style="left:14.10%" title="14 May 2026 — 1 commit: shared settings"></span>
               <span class="cdot" style="left:20.66%" title="3 Jun 2026 — 1 commit: institution-admin layer"></span>
               <span class="cdot" style="left:47.54%" title="24 Aug 2026 — 1 commit: course creation, README, use-case diagram"></span>
+              <span class="cdot big" style="left:51.15%" title="4 Sep 2026 — 1 commit (2b6a28f): FYP-2 build — scenarios, ingestion, lifecycle, S1/S2/S3, tests, docs"><b>+</b></span>
               <span class="gapmark" style="left:21.5%;width:25.3%"><span>82 days, no commits</span></span>
             </div>
           </div>
@@ -556,7 +547,7 @@ footer code { font-size:11.5px; background:var(--surface-2); padding:1px 5px; bo
         <span class="eyebrow">Work breakdown structure</span>
         <h2>44 items, seven groups</h2>
         <p>Tasks, durations and owners come from the project plan; every status was checked against
-        the working tree on 4 Sep 2026 (uncommitted changes on top of <code>92286f6</code>). The last column is where the work lives, so any
+        the code at commit <code>2b6a28f</code> (4 Sep 2026). The last column is where the work lives, so any
         status here can be verified — or corrected — in one look.</p>
       </div>
 
@@ -575,7 +566,7 @@ footer code { font-size:11.5px; background:var(--surface-2); padding:1px 5px; bo
         </table>
       </div>
       <p style="font-size:12px;color:var(--text-subtle);margin:10px 2px 0;max-width:70ch">
-        Owners are as assigned in the project plan. All 12 commits to date are authored by one
+        Owners are as assigned in the project plan. All 13 commits to date are authored by one
         account, so the commit history is not a record of who did what — it is shown separately in
         the timeline above.
       </p>
@@ -891,7 +882,7 @@ footer code { font-size:11.5px; background:var(--surface-2); padding:1px 5px; bo
 
     <footer>
       <div><strong style="color:var(--text)">ClassIQ</strong> — AI-Powered Digital Twin Platform for Classroom Intelligence · Muhammad Ali Jinnah University · supervised by Dr. Syed Imran Jami</div>
-      <div>Sources: <code>Docs/project.md</code>, <code>Docs/BACKEND_ARCHITECTURE.md</code>, <code>Docs/DATA_MODEL.md</code>, <code>db/schema.sql</code>, and the working tree on 4 Sep 2026 (uncommitted, on top of <code>92286f6</code>).</div>
+      <div>Sources: <code>Docs/project.md</code>, <code>Docs/BACKEND_ARCHITECTURE.md</code>, <code>Docs/DATA_MODEL.md</code>, <code>db/schema.sql</code>, and the code at commit <code>2b6a28f</code>.</div>
       <div>Regenerated from <code>Docs/tracker.html</code>. Statuses are checked against code, not copied from the plan.</div>
     </footer>
 
