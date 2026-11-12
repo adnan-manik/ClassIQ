@@ -10,7 +10,6 @@ lazily and cached in memory; on a missing `kid` we refresh once before
 giving up.
 """
 
-import sys
 from threading import Lock
 from typing import Any, NoReturn
 
@@ -19,10 +18,6 @@ from fastapi import HTTPException, status
 from jose import JWTError, jwt
 
 from app.core.config import settings
-
-
-def _log(msg: str) -> None:
-    print(f"[verify_jwt] {msg}", file=sys.stderr, flush=True)
 
 
 _ASYM_ALGS = {"ES256", "ES384", "ES512", "RS256", "RS384", "RS512"}
@@ -85,50 +80,52 @@ def verify_jwt(token: str) -> dict[str, Any]:
     try:
         header = jwt.get_unverified_header(token)
     except JWTError as exc:
-        _log(f"FAILED get_unverified_header: {exc}")
-        _raise_401(f"Malformed JWT: {exc}", exc)
+        _raise_401("Malformed access token", exc)
 
+    if not isinstance(header, dict):
+        _raise_401("Malformed access token header")
     alg = header.get("alg")
     kid = header.get("kid")
-    _log(f"alg={alg} kid={kid} len={len(token)}")
+    if not isinstance(alg, str) or alg not in _ASYM_ALGS | {"HS256"}:
+        _raise_401("Unsupported token algorithm")
+    if kid is not None and not isinstance(kid, str):
+        _raise_401("Invalid signing key identifier")
+    verification = {
+        "audience": "authenticated",
+        "issuer": f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1",
+        "options": {"require_exp": True, "require_sub": True, "require_aud": True, "require_iss": True},
+    }
 
     if alg in _ASYM_ALGS:
         jwks = _get_jwks()
         if not jwks:
-            _log("JWKS fetch returned None")
             _raise_401("Cannot fetch JWKS for asymmetric JWT verification")
         key = _find_key(jwks, kid)
         if not key:
-            _log(f"No key match in cache for kid={kid}, refreshing")
             jwks = _refresh_jwks()
             key = _find_key(jwks, kid) if jwks else None
         if not key:
-            _log(f"Still no key match after refresh for kid={kid}")
-            _raise_401(f"No matching key in JWKS for kid={kid}")
+            _raise_401("No matching signing key")
         try:
             claims = jwt.decode(
                 token,
                 key,
                 algorithms=[alg],
-                audience="authenticated",
+                **verification,
             )
-            _log(f"OK sub={claims.get('sub')} role(meta)={claims.get('user_metadata', {}).get('role')}")
             return claims
         except JWTError as exc:
-            _log(f"FAILED decode (asym): {exc}")
-            _raise_401(f"Invalid or expired token: {exc}", exc)
+            _raise_401("Invalid or expired access token", exc)
 
     # Fallback: legacy HS256 with shared JWT secret
     if not settings.SUPABASE_JWT_SECRET:
-        _log("HS256 fallback but no SUPABASE_JWT_SECRET configured")
         _raise_401("SUPABASE_JWT_SECRET is not configured (HS256 fallback)")
     try:
         return jwt.decode(
             token,
             settings.SUPABASE_JWT_SECRET,
             algorithms=["HS256"],
-            audience="authenticated",
+            **verification,
         )
     except JWTError as exc:
-        _log(f"FAILED decode (HS256): {exc}")
-        _raise_401(f"Invalid or expired token: {exc}", exc)
+        _raise_401("Invalid or expired access token", exc)

@@ -34,12 +34,12 @@ _staff = require_role(UserRole.hod, UserRole.institution_admin, UserRole.super_a
 
 @router.get("/status", response_model=LLMStatus)
 async def llm_status(_user: Annotated[AuthUser, Depends(_staff)]) -> LLMStatus:
-    enabled = llm_client.is_enabled()
     return LLMStatus(
-        enabled=enabled,
-        model=settings.ANTHROPIC_MODEL,
+        enabled=llm_client.is_enabled(),
+        provider=settings.llm_provider,
+        model=settings.llm_model,
         max_output_tokens=int(settings.LLM_MAX_OUTPUT_TOKENS),
-        reason=None if enabled else "ANTHROPIC_API_KEY is not set on the backend",
+        reason=llm_client.unavailable_reason(),
     )
 
 
@@ -49,6 +49,8 @@ async def llm_query(
     user: Annotated[AuthUser, Depends(_staff)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> LLMQueryResponse:
+    if not llm_client.is_enabled():
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, llm_client.unavailable_reason())
     if body.department_id is not None and not await refs.department_in_institution(
         db, body.department_id, user.institution_id
     ):
@@ -77,6 +79,7 @@ async def llm_query(
         entity_id=None,
         payload={
             "question": body.question[:200],
+            "provider": settings.llm_provider,
             "model": answer.model,
             "refusal": answer.refusal,
             "input_tokens": answer.input_tokens,

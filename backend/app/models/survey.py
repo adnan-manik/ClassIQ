@@ -124,7 +124,10 @@ class SurveyResponse(Base):
     )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    __table_args__ = (UniqueConstraint("instrument_id", "external_response_id"),)
+    __table_args__ = (UniqueConstraint(
+        "institution_id", "instrument_id", "external_response_id",
+        name="uq_survey_response_tenant_external",
+    ),)
 
 
 class SurveyAnswer(Base):

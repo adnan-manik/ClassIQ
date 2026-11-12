@@ -264,13 +264,30 @@ async def run_ingestion(
     if inst is not None:
         stmt = (
             select(SurveyResponse.external_response_id)
+            .where(SurveyResponse.institution_id == institution_id)
             .where(SurveyResponse.instrument_id == inst.id)
             .where(SurveyResponse.external_response_id.is_not(None))
         )
         existing_ext_ids = set((await db.execute(stmt)).scalars().all())
 
     roster = await _load_roster(db, institution_id)
-    version_cache: dict[UUID, int] = {}
+
+    # Highest profile version per student in this institution, in one query.
+    # Resolving it inside the response loop cost a round trip per student on
+    # the first import of a cohort. Scoping by institution rather than by an
+    # IN (...) over the roster keeps this to a single bind parameter. A student
+    # absent here (brand new, or never scored) has no profile, so their first
+    # version is 1.
+    version_cache: dict[UUID, int] = {
+        student_id: int(max_version or 0)
+        for student_id, max_version in (
+            await db.execute(
+                select(StudentProfile.student_id, func.max(StudentProfile.version))
+                .where(StudentProfile.institution_id == institution_id)
+                .group_by(StudentProfile.student_id)
+            )
+        ).all()
+    }
     seen_students: set[UUID] = set()
     unsaved_students: set[UUID] = set()
 
@@ -332,6 +349,7 @@ async def run_ingestion(
             continue
 
         if dry_run:
+            existing_ext_ids.add(r.external_response_id)
             summary.responses_ingested += 1
             summary.profiles_created += 1
             if r.extra.get("collaboration_pref") or r.extra.get("participation_level"):
@@ -377,16 +395,7 @@ async def run_ingestion(
                 score = score_responses(r.answers)  # type: ignore[arg-type]
                 dominant = score.dominant_axis()
 
-                if student.id not in version_cache:
-                    current_max = (
-                        await db.execute(
-                            select(func.coalesce(func.max(StudentProfile.version), 0)).where(
-                                StudentProfile.student_id == student.id
-                            )
-                        )
-                    ).scalar_one()
-                    version_cache[student.id] = int(current_max or 0)
-                version_cache[student.id] += 1
+                version_cache[student.id] = version_cache.get(student.id, 0) + 1
 
                 await db.execute(
                     update(StudentProfile)

@@ -2,15 +2,29 @@ import Badge from "@/components/Badge";
 import EmptyState from "@/components/EmptyState";
 import ScoreRing from "@/components/ScoreRing";
 import { BRAND } from "@/lib/brand";
+import { pageSummary, pageWindow } from "@/lib/paging";
 import { createClient } from "@/lib/supabase/server";
 import { FSLSM_AXES, type FslsmAxis } from "@/lib/types";
-import { FileBarChart } from "lucide-react";
+import { ChevronLeft, ChevronRight, FileBarChart } from "lucide-react";
+import Link from "next/link";
 import ReportActions from "./ReportActions";
 
-export default async function ReportsPage() {
+const PER_PAGE = 25;
+
+export default async function ReportsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
   const supabase = await createClient();
 
-  const { data: results } = await supabase
+  const { page, from, to } = pageWindow((await searchParams).page, PER_PAGE);
+
+  // One page at a time. Unbounded, this selected every simulation ever run and
+  // dragged each one's nested factor rows along with it, so the landing cost
+  // grew with the archive. `count: "exact"` comes back in the same request,
+  // which is what lets the pager below know where it is.
+  const { data: results, count } = await supabase
     .from("simulation_results")
     .select(
       `
@@ -24,9 +38,21 @@ export default async function ReportsPage() {
         recommended:teachers!simulation_results_recommended_teacher_id_fkey(full_name),
         factors:simulation_result_factors(factor_name, score, weight, impact)
       `,
+      { count: "exact" },
     )
     .not("section_id", "is", null)
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .range(from, to);
+
+  const total = count ?? 0;
+  const shown = results?.length ?? 0;
+  // A page past the end comes back empty rather than 404ing; the pager below
+  // still offers the way back.
+  const { lastPage, firstShown, lastShown } = pageSummary(
+    { page, from, to, perPage: PER_PAGE },
+    total,
+    shown,
+  );
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6">
@@ -41,18 +67,27 @@ export default async function ReportsPage() {
           <p className="text-sm mt-1" style={{ color: BRAND.textMuted }}>
             Per-section output after the compatibility scoring engine runs.
           </p>
+          {total > 0 && (
+            <p className="text-xs mt-1" style={{ color: BRAND.textMuted }}>
+              Showing {firstShown}&ndash;{lastShown} of {total}
+            </p>
+          )}
         </div>
         <ReportActions />
       </div>
 
-      {!results || results.length === 0 ? (
+      {shown === 0 ? (
         <EmptyState
           icon={FileBarChart}
-          title="No simulation reports yet"
-          description="Reports appear here after running simulations on draft sections."
+          title={total === 0 ? "No simulation reports yet" : "Nothing on this page"}
+          description={
+            total === 0
+              ? "Reports appear here after running simulations on draft sections."
+              : `This archive has ${total} report${total === 1 ? "" : "s"} across ${lastPage} page${lastPage === 1 ? "" : "s"}.`
+          }
         />
       ) : (
-        results.map((r) => {
+        (results ?? []).map((r) => {
           type Tr = { id?: string; full_name: string };
           type Co = { code: string; name: string };
           type Se = {
@@ -287,6 +322,69 @@ export default async function ReportsPage() {
           );
         })
       )}
+
+      {lastPage > 1 && (
+        <nav
+          // Hidden in print, like ReportActions — Print / Export PDF renders
+          // what is on screen, so the pager itself must not end up in the PDF.
+          className="flex items-center justify-between gap-3 pt-2 print:hidden"
+          aria-label="Report pages"
+        >
+          <PagerLink page={page - 1} disabled={page <= 1} direction="prev" />
+          <span className="text-sm" style={{ color: BRAND.textMuted }}>
+            Page {Math.min(page, lastPage)} of {lastPage}
+          </span>
+          <PagerLink page={page + 1} disabled={page >= lastPage} direction="next" />
+        </nav>
+      )}
     </div>
+  );
+}
+
+function PagerLink({
+  page,
+  disabled,
+  direction,
+}: {
+  page: number;
+  disabled: boolean;
+  direction: "prev" | "next";
+}) {
+  const label = direction === "prev" ? "Newer" : "Older";
+  const Icon = direction === "prev" ? ChevronLeft : ChevronRight;
+  const shared = "inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold";
+
+  if (disabled) {
+    return (
+      <span
+        className={shared}
+        style={{
+          border: `1px solid ${BRAND.cardBorder}`,
+          color: BRAND.textMuted,
+          opacity: 0.5,
+        }}
+        aria-disabled="true"
+      >
+        {direction === "prev" && <Icon size={16} />}
+        {label}
+        {direction === "next" && <Icon size={16} />}
+      </span>
+    );
+  }
+
+  return (
+    <Link
+      href={page <= 1 ? "/reports" : `/reports?page=${page}`}
+      className={shared}
+      style={{
+        border: `1px solid ${BRAND.cardBorder}`,
+        backgroundColor: BRAND.card,
+        color: BRAND.teal,
+      }}
+    >
+      {direction === "prev" && <Icon size={16} />}
+      {label}
+      {direction === "next" && <Icon size={16} />}
+    </Link>
   );
 }

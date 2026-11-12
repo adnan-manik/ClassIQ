@@ -798,6 +798,8 @@ export interface LLMQueryResponse {
 
 export interface LLMStatus {
   enabled: boolean;
+  /** Active backend provider — "anthropic" | "groq". */
+  provider: string;
   model: string;
   max_output_tokens: number;
   reason: string | null;

@@ -1,6 +1,6 @@
+import { getAuthContext } from "@/lib/auth";
 import { ApiError, serverFetch } from "@/lib/api.server";
 import { BRAND } from "@/lib/brand";
-import { createClient } from "@/lib/supabase/server";
 import type { DepartmentItem, InstitutionUserListItem, UserRole } from "@/lib/types";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
@@ -14,16 +14,8 @@ export default async function DepartmentDetailPage({
 }) {
   const { id } = await params;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user, profile } = await getAuthContext();
   if (!user) redirect("/login");
-  const { data: profile } = await supabase
-    .from("auth_users")
-    .select("role")
-    .eq("id", user.id)
-    .single();
   const role = profile?.role as UserRole | undefined;
   if (role !== "institution_admin" && role !== "super_admin") redirect("/admin");
 

@@ -52,7 +52,7 @@ async def list_scenarios(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> list[ScenarioListItem]:
     rows = await repo.list_scenarios(db, user.institution_id)
-    return [await svc.build_list_item(db, s, term, n) for (s, term, n) in rows]
+    return await svc.build_list_items(db, rows)
 
 
 @router.post("", response_model=ScenarioDetail, status_code=status.HTTP_201_CREATED)

@@ -5,7 +5,7 @@
 --
 -- This gives you the bare minimum needed to invite demo accounts via
 -- Supabase Dashboard. After running this, copy the printed institution_id
--- into the user_metadata when creating users.
+-- into trusted app_metadata when provisioning users through the Admin API.
 -- ============================================================================
 
 INSERT INTO institutions (id, name, slug)
@@ -32,6 +32,14 @@ VALUES (
 )
 ON CONFLICT (institution_id, name) DO NOTHING;
 
+-- A fresh installation can simulate without loading fabricated demo results.
+INSERT INTO scoring_configs (name, version, is_default, weights)
+SELECT 'ClassIQ default', '1.0', true,
+  '{"style_alignment":0.40,"social_cohesion":0.25,"class_balance":0.20,"participation":0.15}'::jsonb
+WHERE NOT EXISTS (
+  SELECT 1 FROM scoring_configs WHERE institution_id IS NULL AND is_default = true
+);
+
 -- Echo the IDs you'll need when inviting users
 SELECT
   i.id   AS institution_id,
@@ -44,27 +52,15 @@ JOIN academic_terms t ON t.institution_id = i.id AND t.is_active
 WHERE i.slug = 'maju';
 
 -- ============================================================================
--- Next: create 3 demo accounts via Supabase Dashboard → Auth → Users → Invite
+-- Next: create demo accounts using db/seed_users.mjs (development only).
 --
---   ┌─────────────────────────┬────────────────────────────┬─────────────┐
---   │ email                   │ user_metadata              │ → role      │
---   ├─────────────────────────┼────────────────────────────┼─────────────┤
---   │ admin@classiq.demo      │ { "institution_id": "...", │ super_admin │
---   │                         │   "role": "super_admin",   │             │
---   │                         │   "full_name": "Admin" }   │             │
---   ├─────────────────────────┼────────────────────────────┼─────────────┤
---   │ hod@classiq.demo        │ { ..., "role": "hod",      │ hod         │
---   │                         │   "full_name": "Dr. Imran"}│             │
---   ├─────────────────────────┼────────────────────────────┼─────────────┤
---   │ teacher@classiq.demo    │ { ..., "role": "teacher",  │ teacher     │
---   │                         │   "full_name": "Dr.Hassan"}│             │
---   └─────────────────────────┴────────────────────────────┴─────────────┘
---
--- Replace the "..." in institution_id with the UUID printed by the SELECT
--- above (00000000-0000-0000-0000-000000000001 if you used the default).
+-- Admin API payload:
+--   app_metadata: { "institution_id": "<UUID printed above>", "role": "hod" }
+--   user_metadata: { "full_name": "Dr. Imran" }
 --
 -- The trigger from db/auth_trigger.sql creates the matching public.auth_users
--- row automatically on invite.
+-- row on privileged account creation. For email delivery, the backend explicitly
+-- invokes the invite endpoint after provisioning trusted app metadata.
 --
 -- For the teacher role, you'll also want to insert a teachers row that points
 -- to the auth_users.id — handle that separately once the user is created.

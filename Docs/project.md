@@ -9,8 +9,8 @@
 ## Document Status
 
 **Brand:** ClassIQ (chosen 2026-05-11; replaces the working title "Classroom Digital Twin"). The long-form academic title above is retained as the formal project description.
-**Last updated:** 4 September 2026
-**Phase:** FYP-2 build (Phases 3–6 in progress). All eight committed features and the three stretch goals are implemented; remaining work is applying migrations to the shared database, integration testing with real data, and the report / presentation (see §18 and §21).
+**Last updated:** 26 October 2026
+**Phase:** FYP-2 prototype. Feature routes exist, but production readiness and learning-outcome validity are not established. The [October code review and product roadmap](PRODUCT_READINESS_REVIEW.md) supersedes earlier completion claims: it records security and planning fixes, pending migrations, incomplete authorization boundaries, and required end-to-end validation.
 **Companion docs:** [BACKEND_ARCHITECTURE.md](BACKEND_ARCHITECTURE.md) · [DATA_MODEL.md](DATA_MODEL.md) · [ClassIQ-design-guide.pdf](ClassIQ-design-guide.pdf) · SQL in [`db/schema.sql`](../db/schema.sql)
 
 ### Changelog — what's changed since the proposal
@@ -23,7 +23,7 @@ The original proposal text below is preserved. These are the decisions and chang
 4. **Compatibility engine is built — with concrete default weights.** It now combines **four** weighted factors (a *participation mix* factor was added to the original three): style alignment **0.40**, social cohesion **0.25**, class balance **0.20**, participation **0.15**. Weights are centralised and configurable; final score is 0–100 → predicted outcome High ≥70 / Medium 50–69 / Low <50.
 5. **Frontend data-flow is split by area.** HoD/teacher pages **read Supabase directly** (server components, RLS-scoped); **writes** go through the FastAPI backend; **admin** pages use the backend for **both** reads and writes. See §12.
 6. **Supabase keys use the new naming.** `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (browser, RLS-protected) and `SUPABASE_SECRET_KEY` (backend, RLS-bypassing) — not the deprecated `anon` / `service_role` names.
-7. **Multi-tenancy is enforced two ways.** Frontend reads rely on Supabase **RLS**; the FastAPI backend connects with the **secret key, bypasses RLS, and scopes every query by `institution_id` in application code**.
+7. **Multi-tenancy has two enforcement paths.** Frontend reads rely on Supabase **RLS**. FastAPI connects through `DATABASE_URL` as **postgres**, bypasses RLS, and must scope data access by `institution_id` in application code. `SUPABASE_SECRET_KEY` is for the Auth Admin API, not the SQLAlchemy database connection. Complete HoD department and teacher read boundaries remain a launch blocker.
 8. **An institution-admin layer was added** beyond the original eight features: user provisioning with **CSV bulk import** (preview → commit), department management, HoD assignment, institution analytics, and an append-only **audit log**.
 9. **Own ingestion layer.** ClassIQ collects its own surveys and builds its own ingestion path — there is no external app to integrate. An `ingestion_jobs` table models four sources (`rdf_bulk_import`, `form_app`, `classiq_internal`, `manual_admin`) that all converge on one internal schema. The FSLSM model and teaching content recommendations come from **Mr. Mubassher** (external); ClassIQ builds no content-recommendation engine.
 10. **Actual tech stack pinned** (§13): Next.js 16.2.6 / React 19 / Tailwind 4 / TypeScript 5 on the front end; Python + FastAPI / SQLAlchemy 2 (async) + asyncpg / NetworkX 3.4 / python-jose on the back end. The social graph is rendered with a **custom dependency-free SVG force layout** (not React Flow/D3); charts use **Recharts**; report export uses the **browser print pipeline** (Save as PDF).
@@ -32,6 +32,7 @@ The original proposal text below is preserved. These are the decisions and chang
 13. **Section lifecycle and roster editing.** `activate` / `archive` / `reopen` / `delete` endpoints implement the §7 state machine; `PUT /sections/{id}/students` replaces the roster. Course creation now goes through `POST /api/institution/courses` (audited) instead of a direct Supabase insert.
 14. **Stretch goals implemented.** S1 early warning (`section_outcomes`, `early_warning_flags`, pure comparator, teacher data entry, HoD flag triage), S2 Ask ClassIQ (Claude API via the official SDK, backend-only key, cached system prompt + tenant snapshot, per-query token cap, refusal-aware), S3 longitudinal analytics (profile-history per student, cohort drift per term / version).
 15. **Automated tests exist.** `backend/tests/` (pytest: engines, adapters, auth path, RLS isolation when a test DB is present) and `frontend/src/**/*.test.ts` (Vitest). See [FYP2_IMPLEMENTATION_PLAN.md](FYP2_IMPLEMENTATION_PLAN.md) for the phase plan that drove this.
+16. **October correctness and security fixes.** Browser writes are disabled by migration; signup authorization comes only from trusted app metadata; HoDs cannot provision admins; section/scenario writes and their audit rows share a transaction; scenario apply rejects active/archived destinations and rolls back if rescoring fails. Survey idempotency is tenant-scoped. Scoring service version `0.1.1` corrects teacher ranking and avoids counting generic and term-specific participation twice. SQL security tests run locally with PGlite.
 
 ---
 
@@ -237,7 +238,7 @@ Built from the start (not retrofitted):
 
 - Each institution is a separate tenant with **isolated data**
 - Users, sections, courses, profiles, reports — never visible across institutions
-- **Two-layer enforcement:** Supabase **row-level security (RLS)** for direct frontend reads, **plus** application-level `institution_id` scoping on every backend query (the backend uses the secret key and bypasses RLS)
+- **Two enforcement paths:** Supabase **row-level security (RLS)** for direct frontend reads, plus explicit `institution_id` scoping on backend queries (`DATABASE_URL` connects as postgres and bypasses RLS).
 - Super-admin handles institution onboarding; an **institution-admin** role manages users, departments, and HoD assignment within the institution; HoD manages their own department
 
 ---
@@ -338,7 +339,7 @@ Intentionally out of FYP scope. Planned for commercial product after graduation.
             │                │ CSV import · Audit log   │
             │                │ LLM layer (deferred, S2) │
             │                └───────────┬──────────────┘
-            │           secret key,      │
+            │           postgres,        │
             │           bypasses RLS,    │
             │           scopes inst_id   │
 ┌───────────▼────────────────────────────▼─────────────┐   ┌──────────────────────────┐
@@ -353,7 +354,7 @@ Intentionally out of FYP scope. Planned for commercial product after graduation.
 - The frontend talks to data **two ways**: HoD/teacher pages **read Supabase directly** in server components (publishable key, RLS-scoped); **writes** (create/update/simulate section) and **all admin** reads/writes go through the **FastAPI** backend.
 - NetworkX runs **in-process** within FastAPI (no separate service)
 - LLM API calls are made from **backend only** (keys never exposed to client); the dependency is currently deferred
-- **Multi-tenancy is enforced twice**: Supabase **RLS** for direct frontend reads, and **application-level `institution_id` scoping** on every backend query (the backend connects with the secret key and bypasses RLS)
+- **Multi-tenancy has two enforcement paths**: Supabase **RLS** for direct frontend reads, and explicit `institution_id` scoping for backend SQL (the `DATABASE_URL` connection uses postgres and bypasses RLS).
 - Mr. Mubassher's **FSLSM model + content recommendations** are the only external input — that data is ingested; there is no external app to integrate
 
 ---
@@ -704,7 +705,7 @@ D:\FYP-
 | Social graph view (custom SVG) | ✅ Done | `social-graph/SocialGraphView.tsx` |
 | Institution analytics (+ department drill-down, simulations by department) | ✅ Done | `institution_analytics`, `/admin/analytics`, `AnalyticsDrilldown.tsx` |
 | S1 Early warning | ✅ Done | `db/migrations/2026-09-04_early_warning.sql`, `engines/early_warning.py`, `routers/early_warning.py`, `/early-warning` |
-| S2 Ask ClassIQ (NL query) | ✅ Done (needs `ANTHROPIC_API_KEY`) | `backend/app/llm/`, `routers/llm.py`, `/ask` |
+| S2 Ask ClassIQ (NL query) | ✅ Done (needs the `LLM_PROVIDER` key — `GROQ_API_KEY` or `ANTHROPIC_API_KEY`) | `backend/app/llm/`, `routers/llm.py`, `/ask` |
 | S3 Longitudinal analytics | ✅ Done | `routers/longitudinal.py`, `/api/students/{id}/profile-history`, `/longitudinal`, `components/ProfileHistory.tsx` |
 | Automated tests (pytest / Vitest) | ✅ Done | `backend/tests/` (69 tests; RLS suite skips without `TEST_DATABASE_URL`), `frontend/src/lib/stats.test.ts` |
 | Migrations applied to the shared Supabase project | ✅ Done (4 Sep 2026) | `db/migrations/2026-09-04_*.sql` — 44 ILS questions seeded, S1 tables + RLS live; DB is PostgreSQL 17.6, 29 tables |

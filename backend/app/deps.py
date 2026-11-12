@@ -17,6 +17,7 @@ from uuid import UUID
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from app.core.security import verify_jwt
 from app.db.session import get_db
@@ -34,7 +35,8 @@ async def current_user_claims(
             headers={"WWW-Authenticate": "Bearer"},
         )
     token = authorization[7:].strip()
-    return verify_jwt(token)
+    # JWKS refresh uses synchronous HTTP; never block the async request loop.
+    return await run_in_threadpool(verify_jwt, token)
 
 
 async def current_user(
@@ -50,7 +52,7 @@ async def current_user(
         )
     try:
         user_id = UUID(sub)
-    except ValueError as exc:
+    except (ValueError, TypeError, AttributeError) as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token `sub` is not a valid UUID",

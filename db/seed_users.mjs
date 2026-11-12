@@ -1,6 +1,6 @@
 // Create 3 demo accounts via Supabase Auth Admin API.
 // The auth.users → public.auth_users trigger picks up institution_id + role
-// from user_metadata and creates the matching public.auth_users row.
+// from trusted app_metadata and creates the matching public.auth_users row.
 //
 // Run:
 //   SUPABASE_SECRET_KEY='sb_secret_…' node seed_users.mjs
@@ -46,9 +46,11 @@ for (const u of USERS) {
     email: u.email,
     password: u.password,
     email_confirm: true,
-    user_metadata: {
+    app_metadata: {
       institution_id: INSTITUTION_ID,
       role: u.role,
+    },
+    user_metadata: {
       full_name: u.full_name,
     },
   };

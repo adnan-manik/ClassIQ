@@ -22,7 +22,7 @@ BEGIN;
 -- PART 1  Extensions
 -- ============================================================================
 
-CREATE EXTENSION IF NOT EXISTS pgcrypto;  -- gen_random_uuid() (also built-in on PG13+)
+-- gen_random_uuid() is built into PostgreSQL 13+ (including Supabase).
 
 -- ============================================================================
 -- PART 2  ENUM types  (DATA_MODEL §3)
@@ -31,7 +31,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;  -- gen_random_uuid() (also built-in on
 -- NOTE: 'student' is included for forward-compat with R3 (post-FYP student login).
 -- It is unused in FYP scope; role-check decorators and RLS policies don't grant
 -- tenant-data reads to this role.
-CREATE TYPE user_role         AS ENUM ('super_admin', 'hod', 'teacher', 'student');
+CREATE TYPE user_role         AS ENUM ('super_admin', 'institution_admin', 'hod', 'teacher', 'student');
 CREATE TYPE section_state     AS ENUM ('draft', 'simulated', 'active', 'archived');
 CREATE TYPE collab_pref       AS ENUM ('solo', 'pair', 'group');
 CREATE TYPE participation_lvl AS ENUM ('low', 'medium', 'high');
@@ -273,7 +273,8 @@ CREATE TABLE survey_responses (
   external_response_id TEXT,
   created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
   deleted_at           TIMESTAMPTZ,
-  UNIQUE (instrument_id, external_response_id)
+  CONSTRAINT uq_survey_response_tenant_external
+    UNIQUE (institution_id, instrument_id, external_response_id)
 );
 CREATE INDEX idx_survey_responses_student ON survey_responses(student_id, submitted_at DESC);
 CREATE INDEX idx_survey_responses_inst    ON survey_responses(institution_id);
@@ -404,8 +405,14 @@ CREATE TABLE simulation_runs (
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
   CHECK ((scenario_id IS NOT NULL) OR (section_id IS NOT NULL))
 );
-CREATE INDEX idx_sim_runs_scenario ON simulation_runs(scenario_id);
+-- (scenario_id, created_at DESC) rather than scenario_id alone: the scenario
+-- list asks for the newest successful run per scenario in one DISTINCT ON, so
+-- created_at is read from the index rather than the heap. The leading column
+-- still covers the cascade from scenarios.
+CREATE INDEX idx_sim_runs_scenario_recent ON simulation_runs(scenario_id, created_at DESC);
 CREATE INDEX idx_sim_runs_section  ON simulation_runs(section_id);
+-- Every institution-level simulation aggregate joins through this column.
+CREATE INDEX idx_sim_runs_institution ON simulation_runs(institution_id);
 
 -- ─── Layer 5 ────────────────────────────────────────────────────────────────
 
@@ -429,8 +436,12 @@ CREATE TABLE simulation_results (
   CHECK ((scenario_section_id IS NOT NULL) OR (section_id IS NOT NULL))
 );
 CREATE INDEX idx_sim_results_run          ON simulation_results(simulation_run_id);
-CREATE INDEX idx_sim_results_scenario_sec ON simulation_results(scenario_section_id);
-CREATE INDEX idx_sim_results_section      ON simulation_results(section_id);
+-- Both carry created_at DESC so "newest result per section" reads created_at
+-- from the index; an ordered index scan with no sort needs a single key, since
+-- IN (...) plans as a bitmap scan plus a sort. The leading column keeps the
+-- cascade lookups. See db/tests/simulation_reads.test.mjs for the plans.
+CREATE INDEX idx_sim_results_scenario_sec_recent ON simulation_results(scenario_section_id, created_at DESC);
+CREATE INDEX idx_sim_results_section_recent      ON simulation_results(section_id, created_at DESC);
 
 -- ─── Layer 6 ────────────────────────────────────────────────────────────────
 

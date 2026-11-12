@@ -42,17 +42,28 @@ async def _history(db: AsyncSession, section_id: UUID) -> list[SimulationHistory
         .limit(25)
     )
     rows = (await db.execute(stmt)).all()
+
+    # One query for every result's factors, not one per result: this history
+    # is up to 25 rows deep and each query is a round trip to the pooler.
+    factors_by_result: dict[UUID, list[SimulationResultFactor]] = {}
+    if rows:
+        factor_rows = (
+            await db.execute(
+                select(SimulationResultFactor)
+                .where(
+                    SimulationResultFactor.simulation_result_id.in_(
+                        [result.id for result, _run, _rec in rows]
+                    )
+                )
+                .order_by(SimulationResultFactor.factor_name)
+            )
+        ).scalars().all()
+        for f in factor_rows:
+            factors_by_result.setdefault(f.simulation_result_id, []).append(f)
+
     out: list[SimulationHistoryItem] = []
     for result, run, recommended in rows:
-        factors = list(
-            (
-                await db.execute(
-                    select(SimulationResultFactor)
-                    .where(SimulationResultFactor.simulation_result_id == result.id)
-                    .order_by(SimulationResultFactor.factor_name)
-                )
-            ).scalars().all()
-        )
+        factors = factors_by_result.get(result.id, [])
         out.append(
             SimulationHistoryItem(
                 id=result.id,

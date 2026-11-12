@@ -1,0 +1,18 @@
+# Instructional-artifact analysis — embedding side only.
+#
+# The classifiers were fit on sentence-transformers/multi-qa-mpnet-base-dot-v1.
+# That checkpoint uses CLS pooling and UNNORMALIZED output; its near-namesake
+# multi-qa-mpnet-base-cos-v1 uses mean pooling and normalizes. Loading the wrong
+# one produces confident, meaningless predictions with no error — which is why
+# app/artifacts/encoder.py goes through sentence-transformers rather than
+# hand-rolling a pooling layer.
+#
+# torch is CPU-only here; that is all inference needs and it avoids a ~2GB CUDA
+# download:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+-r requirements.txt
+sentence-transformers>=3.0
+
+# Offline only — app/artifacts/extract.py reads the supplied .pkl files once to
+# produce the .npz weights. Not needed by the running service.
+joblib>=1.4

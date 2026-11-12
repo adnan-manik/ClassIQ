@@ -1,6 +1,6 @@
 import Sidebar from "@/components/Sidebar";
+import { getAuthContext } from "@/lib/auth";
 import { BRAND } from "@/lib/brand";
-import { createClient } from "@/lib/supabase/server";
 import type { AuthUser, UserRole } from "@/lib/types";
 import { redirect } from "next/navigation";
 import { ReactNode } from "react";
@@ -15,18 +15,9 @@ export default async function DashboardLayout({
 }: {
   children: ReactNode;
 }) {
-  const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user, profile } = await getAuthContext();
   if (!user) redirect("/login");
-
-  const { data: profile } = await supabase
-    .from("auth_users")
-    .select("id, institution_id, role, full_name, email")
-    .eq("id", user.id)
-    .single();
 
   if (!profile) {
     // auth.users row exists but no profile — trigger missed or unknown user

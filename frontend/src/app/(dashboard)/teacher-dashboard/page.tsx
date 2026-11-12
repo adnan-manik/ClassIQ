@@ -2,6 +2,7 @@ import Badge from "@/components/Badge";
 import EmptyState from "@/components/EmptyState";
 import OutcomeEntry from "@/components/OutcomeEntry";
 import SignOutButton from "@/components/SignOutButton";
+import { getAuthContext } from "@/lib/auth";
 import { BRAND } from "@/lib/brand";
 import { createClient } from "@/lib/supabase/server";
 import { FSLSM_AXES, type FslsmAxis } from "@/lib/types";
@@ -12,6 +13,7 @@ const AXES = Object.keys(FSLSM_AXES) as FslsmAxis[];
 
 type StudentProfileRow = {
   is_current: boolean;
+  deleted_at: string | null;
   dominant_axis: string | null;
   active_reflective_score: number;
   sensing_intuitive_score: number;
@@ -22,16 +24,8 @@ type StudentProfileRow = {
 export default async function TeacherDashboardPage() {
   const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user, profile } = await getAuthContext();
   if (!user) redirect("/login");
-
-  const { data: profile } = await supabase
-    .from("auth_users")
-    .select("full_name, email, role, institution_id")
-    .eq("id", user.id)
-    .single();
 
   // Resolve the teacher row linked to this auth account.
   const { data: teacherRow } = await supabase
@@ -48,10 +42,11 @@ export default async function TeacherDashboardPage() {
             id, label, state,
             course:courses(code, name),
             section_students(
+              removed_at,
               student:students(
-                id, full_name, external_id,
+                id, full_name, external_id, deleted_at,
                 profile:student_profiles!student_profiles_student_id_fkey(
-                  is_current, dominant_axis,
+                  is_current, deleted_at, dominant_axis,
                   active_reflective_score, sensing_intuitive_score,
                   visual_verbal_score, sequential_global_score
                 )
@@ -60,6 +55,7 @@ export default async function TeacherDashboardPage() {
           `,
         )
         .eq("teacher_id", teacherRow.id)
+        .is("deleted_at", null)
         .order("label")
     : { data: null };
 
@@ -69,19 +65,25 @@ export default async function TeacherDashboardPage() {
       id: string;
       full_name: string;
       external_id: string | null;
+      deleted_at: string | null;
       profile: StudentProfileRow[];
     };
     const course = (Array.isArray(sec.course)
       ? sec.course[0]
       : sec.course) as Co | null;
 
-    const roster = ((sec.section_students ?? []) as { student: St | St[] }[]).map(
+    const roster = ((sec.section_students ?? []) as { removed_at: string | null; student: St | St[] }[])
+      .filter((ss) => ss.removed_at === null)
+      .filter((ss) => {
+        const student = Array.isArray(ss.student) ? ss.student[0] : ss.student;
+        return student && student.deleted_at === null;
+      }).map(
       (ss) => {
         const stud = (Array.isArray(ss.student)
           ? ss.student[0]
           : ss.student) as St | null;
         const prof =
-          stud?.profile?.find((p) => p.is_current) ?? null;
+          stud?.profile?.find((p) => p.is_current && p.deleted_at === null) ?? null;
         return {
           id: stud?.id ?? "",
           full_name: stud?.full_name ?? "(unknown)",

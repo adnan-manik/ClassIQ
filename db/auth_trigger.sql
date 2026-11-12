@@ -7,14 +7,9 @@
 -- automatically create the matching public.auth_users row so the rest of the
 -- platform can look up role + institution scope.
 --
--- For ClassIQ the institution must be assigned. Two flows:
---   (1) Invitation: super_admin invites a user with institution_id + role in
---       the invite metadata (user_metadata or app_metadata).
---   (2) Self-signup: the signup form passes institution_id and role.
---
--- The trigger reads `raw_user_meta_data` (user_metadata) for `institution_id`
--- and `role`. If either is missing, the trigger raises an error so we never
--- end up with orphaned auth.users rows.
+-- Institution and role MUST be assigned by the backend Admin API using
+-- app_metadata. User-editable signup metadata is never authorization data.
+-- Self-signup without a provisioned tenant and role is rejected.
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION public.handle_new_auth_user()
@@ -28,16 +23,8 @@ DECLARE
   v_role           user_role;
   v_full_name      TEXT;
 BEGIN
-  -- Pull from user_metadata; super_admin can override via app_metadata.
-  v_institution_id := COALESCE(
-    (NEW.raw_app_meta_data ->> 'institution_id')::UUID,
-    (NEW.raw_user_meta_data ->> 'institution_id')::UUID
-  );
-
-  v_role := COALESCE(
-    (NEW.raw_app_meta_data ->> 'role')::user_role,
-    (NEW.raw_user_meta_data ->> 'role')::user_role
-  );
+  v_institution_id := (NEW.raw_app_meta_data ->> 'institution_id')::UUID;
+  v_role := (NEW.raw_app_meta_data ->> 'role')::user_role;
 
   v_full_name := COALESCE(
     NEW.raw_user_meta_data ->> 'full_name',
@@ -45,11 +32,11 @@ BEGIN
   );
 
   IF v_institution_id IS NULL THEN
-    RAISE EXCEPTION 'ClassIQ: cannot create auth_users row — institution_id missing in user_metadata for auth.users.id=%', NEW.id;
+    RAISE EXCEPTION 'ClassIQ: trusted app_metadata institution_id is required';
   END IF;
 
   IF v_role IS NULL THEN
-    RAISE EXCEPTION 'ClassIQ: cannot create auth_users row — role missing in user_metadata for auth.users.id=%', NEW.id;
+    RAISE EXCEPTION 'ClassIQ: trusted app_metadata role is required';
   END IF;
 
   INSERT INTO public.auth_users (id, institution_id, role, full_name, email)
@@ -82,8 +69,8 @@ EXECUTE FUNCTION public.handle_new_auth_user();
 --
 -- • To test:
 --     1. Run db/seed_minimal.sql to create a default institution.
---     2. In Supabase Dashboard → Auth → Users → Invite,
---        attach raw_user_meta_data like
---          { "institution_id": "<uuid>", "role": "hod", "full_name": "Test" }
+--     2. Use the Admin API to create a user with app_metadata containing
+--        { "institution_id": "<uuid>", "role": "hod" } and user_metadata
+--        containing only { "full_name": "Test" }.
 --     3. Confirm a public.auth_users row appears.
 -- ============================================================================

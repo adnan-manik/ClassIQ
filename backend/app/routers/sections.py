@@ -52,7 +52,12 @@ _staff = require_role(UserRole.hod, UserRole.institution_admin, UserRole.super_a
 async def _build_result_shape(
     db: AsyncSession, section_id: UUID
 ) -> SimulationResultShape | None:
-    bundle = await sections_repo.latest_result_for_section(db, section_id)
+    """One section's latest result. For a list of sections, fetch them with
+    `sections_repo.latest_results_for_sections` and call `_result_shape`."""
+    return _result_shape(await sections_repo.latest_result_for_section(db, section_id))
+
+
+def _result_shape(bundle) -> SimulationResultShape | None:
     if not bundle:
         return None
     result, factors, recommended = bundle
@@ -93,20 +98,22 @@ async def list_sections(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> list[SectionListItem]:
     rows = await sections_repo.list_sections(db, user.institution_id)
-    items: list[SectionListItem] = []
-    for sec, course, teacher, t_profile, student_count in rows:
-        items.append(
-            SectionListItem(
-                id=sec.id,
-                label=sec.label,
-                state=sec.state,
-                course=CourseRef(id=course.id, code=course.code, name=course.name),
-                teacher=_teacher_ref(teacher, t_profile),
-                student_count=student_count,
-                latest_result=await _build_result_shape(db, sec.id),
-            )
+    # Every section's latest result in two queries, not two per section.
+    results = await sections_repo.latest_results_for_sections(
+        db, [sec.id for sec, *_ in rows]
+    )
+    return [
+        SectionListItem(
+            id=sec.id,
+            label=sec.label,
+            state=sec.state,
+            course=CourseRef(id=course.id, code=course.code, name=course.name),
+            teacher=_teacher_ref(teacher, t_profile),
+            student_count=student_count,
+            latest_result=_result_shape(results.get(sec.id)),
         )
-    return items
+        for sec, course, teacher, t_profile, student_count in rows
+    ]
 
 
 async def _build_section_detail(
@@ -259,13 +266,16 @@ async def replace_roster(
             f"Cannot change the roster of a {section.state.value} section",
         )
     now = datetime.now(timezone.utc)
-    added, removed = await sections_repo.reconcile_roster(
-        db,
-        institution_id=user.institution_id,
-        section=section,
-        student_ids=body.student_ids,
-        now=now,
-    )
+    try:
+        added, removed = await sections_repo.reconcile_roster(
+            db,
+            institution_id=user.institution_id,
+            section=section,
+            student_ids=body.student_ids,
+            now=now,
+        )
+    except sections_repo.SectionRefError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     if added or removed:
         await write_audit(
             db,

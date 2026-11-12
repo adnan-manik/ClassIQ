@@ -8,7 +8,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.core.security import _get_jwks  # noqa: F401 — pre-warm JWKS on import
 from app.routers import (
     admin_institutions,
     admin_system,
@@ -82,7 +81,3 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
-
-# Pre-warm the JWKS cache so the first authed request doesn't pay the
-# ~3-5s sync HTTP fetch cost.
-_get_jwks()
