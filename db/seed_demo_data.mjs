@@ -14,7 +14,8 @@
 
 import { Client } from "pg";
 
-const SUPABASE_URL = "https://lfvsppanrtwywvvqoiiq.supabase.co";
+const SUPABASE_URL =
+  process.env.SUPABASE_URL ?? "https://kmmkpfhwvgfntzjshuej.supabase.co";
 const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
 const PGPASSWORD = process.env.PGPASSWORD;
 
@@ -48,9 +49,12 @@ for (const t of TEACHER_USERS.slice(1)) {
       email: t.email,
       password: "ClassIQ2026!",
       email_confirm: true,
-      user_metadata: {
+      // Institution and role are authorization data → trusted app_metadata only.
+      app_metadata: {
         institution_id: INST,
         role: "teacher",
+      },
+      user_metadata: {
         full_name: t.full_name,
       },
     }),
@@ -64,10 +68,10 @@ for (const t of TEACHER_USERS.slice(1)) {
 
 // ─── 2. Connect to Postgres ────────────────────────────────────────────────
 const client = new Client({
-  host: "aws-1-ap-southeast-1.pooler.supabase.com",
+  host: process.env.PGHOST ?? "aws-1-ap-south-1.pooler.supabase.com",
   port: 5432,
   database: "postgres",
-  user: "postgres.lfvsppanrtwywvvqoiiq",
+  user: process.env.PGUSER ?? "postgres.kmmkpfhwvgfntzjshuej",
   password: PGPASSWORD,
   ssl: { rejectUnauthorized: false },
 });
@@ -211,7 +215,7 @@ for (const s of STUDENTS) {
     `INSERT INTO survey_responses (id, institution_id, student_id, instrument_id, academic_term_id,
                                     submitted_at, source, external_response_id)
        VALUES ($1, $2, $3, $4, $5, now(), 'manual_admin', $6)
-       ON CONFLICT (instrument_id, external_response_id) DO NOTHING;`,
+       ON CONFLICT (institution_id, instrument_id, external_response_id) DO NOTHING;`,
     [responseId, INST, studentId, INSTRUMENT_ID, TERM, `seed-${s.ext}`],
   );
 

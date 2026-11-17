@@ -5,7 +5,8 @@
 // Run:
 //   SUPABASE_SECRET_KEY='sb_secret_…' node seed_users.mjs
 
-const SUPABASE_URL = "https://lfvsppanrtwywvvqoiiq.supabase.co";
+const SUPABASE_URL =
+  process.env.SUPABASE_URL ?? "https://kmmkpfhwvgfntzjshuej.supabase.co";
 const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
 const INSTITUTION_ID = "00000000-0000-0000-0000-000000000001";
 

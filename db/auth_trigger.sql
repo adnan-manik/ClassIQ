@@ -10,6 +10,13 @@
 -- Institution and role MUST be assigned by the backend Admin API using
 -- app_metadata. User-editable signup metadata is never authorization data.
 -- Self-signup without a provisioned tenant and role is rejected.
+--
+-- Timing: current Supabase Auth (GoTrue) inserts the auth.users row with default
+-- app_metadata and applies the app_metadata supplied to the Admin API afterwards,
+-- inside the same transaction. A plain AFTER INSERT trigger would therefore never
+-- see institution_id/role. This is a DEFERRABLE INITIALLY DEFERRED constraint
+-- trigger: it fires at COMMIT and re-reads the final row, so the check still
+-- rejects users that end up without trusted app_metadata.
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION public.handle_new_auth_user()
@@ -22,13 +29,30 @@ DECLARE
   v_institution_id UUID;
   v_role           user_role;
   v_full_name      TEXT;
+  v_email          TEXT;
+  v_app_meta       JSONB;
+  v_user_meta      JSONB;
 BEGIN
-  v_institution_id := (NEW.raw_app_meta_data ->> 'institution_id')::UUID;
-  v_role := (NEW.raw_app_meta_data ->> 'role')::user_role;
+  -- Deferred: read the row as it is at COMMIT, not as it was at INSERT.
+  SELECT u.raw_app_meta_data, u.raw_user_meta_data, u.email
+    INTO v_app_meta, v_user_meta, v_email
+    FROM auth.users u
+   WHERE u.id = NEW.id;
+
+  IF NOT FOUND THEN
+    RETURN NEW;  -- user was removed again within the same transaction
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM public.auth_users WHERE id = NEW.id) THEN
+    RETURN NEW;
+  END IF;
+
+  v_institution_id := (v_app_meta ->> 'institution_id')::UUID;
+  v_role := (v_app_meta ->> 'role')::user_role;
 
   v_full_name := COALESCE(
-    NEW.raw_user_meta_data ->> 'full_name',
-    NEW.email
+    v_user_meta ->> 'full_name',
+    v_email
   );
 
   IF v_institution_id IS NULL THEN
@@ -40,7 +64,7 @@ BEGIN
   END IF;
 
   INSERT INTO public.auth_users (id, institution_id, role, full_name, email)
-  VALUES (NEW.id, v_institution_id, v_role, v_full_name, NEW.email);
+  VALUES (NEW.id, v_institution_id, v_role, v_full_name, v_email);
 
   RETURN NEW;
 END;
@@ -49,8 +73,9 @@ $$;
 -- Drop & re-create cleanly so this script is idempotent
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 
-CREATE TRIGGER on_auth_user_created
+CREATE CONSTRAINT TRIGGER on_auth_user_created
 AFTER INSERT ON auth.users
+DEFERRABLE INITIALLY DEFERRED
 FOR EACH ROW
 EXECUTE FUNCTION public.handle_new_auth_user();
 

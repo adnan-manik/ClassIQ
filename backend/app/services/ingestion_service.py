@@ -18,11 +18,12 @@ writing anything (no job row either).
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.engines.fslsm.scorer import score_responses
@@ -192,6 +193,128 @@ def _display_name(r: InternalResponse) -> str:
     return "Unnamed student"
 
 
+async def _persist_bulk(
+    db: AsyncSession,
+    *,
+    institution_id: UUID,
+    department_id: UUID | None,
+    inst: SurveyInstrument,
+    qmap: dict[int, UUID],
+    job: IngestionJob,
+    academic_term_id: UUID | None,
+    now: datetime,
+    version_cache: dict[UUID, int],
+    pending: list[tuple],
+) -> int:
+    """Write every pending response with a few bulk statements.
+
+    Rows reference each other by bare FK columns, so statements are issued in
+    dependency order: students -> responses -> answers/profiles/aux profiles.
+    Returns the number of aux profiles created. Raises on any DB error; the
+    caller rolls back the savepoint and falls back to the per-row path.
+    """
+    vc = dict(version_cache)  # only committed to version_cache on success
+
+    # Existing students: backfill department / email, as the row path does.
+    created_ids = {st.id for _, _, st, created in pending if created}
+    for r, _ref, st, _created in pending:
+        if department_id is not None and st.department_id is None:
+            st.department_id = department_id
+        if not st.email and r.email:
+            st.email = r.email.strip().lower()
+
+    student_rows = {}
+    for _r, _ref, st, _c in pending:
+        if st.id in created_ids and st.id not in student_rows:
+            student_rows[st.id] = dict(
+                id=st.id, institution_id=institution_id, department_id=st.department_id,
+                external_id=st.external_id, full_name=st.full_name, email=st.email,
+                created_at=st.created_at or now,
+            )
+
+    resp_rows, ans_rows, prof_rows, aux_rows = [], [], [], []
+    last_prof: dict[UUID, int] = {}
+    last_aux: dict[UUID, int] = {}
+    for r, _ref, st, _c in pending:
+        rid = uuid4()
+        resp_rows.append(dict(
+            id=rid, institution_id=institution_id, student_id=st.id,
+            instrument_id=inst.id, academic_term_id=academic_term_id,
+            submitted_at=r.submitted_at or now, source=r.source,
+            ingestion_job_id=job.id, external_response_id=r.external_response_id,
+            created_at=now,
+        ))
+        for qno, choice in r.answers.items():
+            ans_rows.append(dict(
+                response_id=rid, question_id=qmap[qno], choice=AnswerChoice(choice),
+            ))
+        score = score_responses(r.answers)  # type: ignore[arg-type]
+        dominant = score.dominant_axis()
+        vc[st.id] = vc.get(st.id, 0) + 1
+        prof_rows.append(dict(
+            id=uuid4(), institution_id=institution_id, student_id=st.id,
+            derived_from_response_id=rid, version=vc[st.id], is_current=False,
+            scored_at=now, scoring_engine_version=FSLSM_SCORER_VERSION,
+            active_reflective_score=score.active_reflective,
+            sensing_intuitive_score=score.sensing_intuitive,
+            visual_verbal_score=score.visual_verbal,
+            sequential_global_score=score.sequential_global,
+            dominant_axis=FslsmAxis(dominant.value) if dominant else None,
+        ))
+        last_prof[st.id] = len(prof_rows) - 1
+
+        collab = r.extra.get("collaboration_pref")
+        part = r.extra.get("participation_level")
+        if collab or part:
+            aux_rows.append(dict(
+                id=uuid4(), institution_id=institution_id, student_id=st.id,
+                academic_term_id=academic_term_id,
+                collaboration_pref=CollabPref(collab) if collab else None,
+                participation_level=ParticipationLevel(part) if part else None,
+                notes=r.extra.get("notes"), is_current=False, collected_at=now,
+            ))
+            last_aux[st.id] = len(aux_rows) - 1
+
+    # Within the batch only a student's newest profile is current.
+    for i in last_prof.values():
+        prof_rows[i]["is_current"] = True
+    for i in last_aux.values():
+        aux_rows[i]["is_current"] = True
+
+    student_ids = list({st.id for _, _, st, _ in pending})
+
+    if student_rows:
+        await db.execute(insert(Student), list(student_rows.values()))
+    await db.execute(insert(SurveyResponse), resp_rows)
+    await db.execute(insert(SurveyAnswer), ans_rows)
+    await db.execute(
+        update(StudentProfile)
+        .where(StudentProfile.student_id.in_(student_ids))
+        .where(StudentProfile.is_current.is_(True))
+        .values(is_current=False)
+        .execution_options(synchronize_session=False)
+    )
+    await db.execute(insert(StudentProfile), prof_rows)
+    if aux_rows:
+        aux_students = list(last_aux)
+        await db.execute(
+            update(StudentAuxProfile)
+            .where(StudentAuxProfile.student_id.in_(aux_students))
+            .where(StudentAuxProfile.is_current.is_(True))
+            .where(
+                (StudentAuxProfile.academic_term_id == academic_term_id)
+                if academic_term_id is not None
+                else StudentAuxProfile.academic_term_id.is_(None)
+            )
+            .values(is_current=False)
+            .execution_options(synchronize_session=False)
+        )
+        await db.execute(insert(StudentAuxProfile), aux_rows)
+
+    version_cache.update(vc)
+    return len(aux_rows)
+
+
 # ─── Pipeline ───────────────────────────────────────────────────────────────
 
 async def run_ingestion(
@@ -291,79 +414,22 @@ async def run_ingestion(
     seen_students: set[UUID] = set()
     unsaved_students: set[UUID] = set()
 
-    # ── Per-response loop ───────────────────────────────────────────────
-    for r in responses:
-        ref = r.ref or r.external_response_id
-        issues = validate_response(r)
-        if issues:
-            summary.errors.extend(issues)
-            summary.responses_rejected += 1
-            continue
+    pending: list[tuple] = []
 
-        # Identity resolution
-        student: Student | None = None
-        if r.student_external_id:
-            student = roster.by_external.get(r.student_external_id.strip().lower())
-        if student is None and r.extra.get("student_id"):
-            sid = r.extra["student_id"]
-            sid = sid if isinstance(sid, UUID) else UUID(str(sid))
-            student = roster.by_id.get(sid)
-            if student is None:
-                summary.errors.append(
-                    IngestionIssue(ref, "student_id", "student not found in your institution")
-                )
-                summary.responses_rejected += 1
-                continue
-        if student is None and r.email:
-            student = roster.by_email.get(r.email.strip().lower())
-
-        created_now = False
-        if student is None:
-            created_now = True
-            student = Student(
-                id=uuid4(),
-                institution_id=institution_id,
-                department_id=department_id,
-                external_id=(r.student_external_id or "").strip() or None,
-                full_name=_display_name(r),
-                email=(r.email or "").strip().lower() or None,
-                created_at=now,
-            )
-            if student.external_id:
-                roster.by_external[student.external_id.lower()] = student
-            if student.email:
-                roster.by_email[student.email] = student
-            roster.by_id[student.id] = student
-
-        if student.id not in seen_students:
-            seen_students.add(student.id)
-            summary.students_seen += 1
-            if created_now:
-                summary.students_created += 1
-            else:
-                summary.students_matched += 1
-
-        # Idempotency
-        if r.external_response_id in existing_ext_ids:
-            summary.responses_duplicate += 1
-            continue
-
-        if dry_run:
-            existing_ext_ids.add(r.external_response_id)
-            summary.responses_ingested += 1
-            summary.profiles_created += 1
-            if r.extra.get("collaboration_pref") or r.extra.get("participation_level"):
-                summary.aux_profiles_created += 1
-            continue
-
+    async def persist_one(r, ref, student, created_now):
+        """Slow, row-at-a-time path: one savepoint per response. Used only when
+        the bulk path fails, so a single bad row never sinks the batch."""
         assert inst is not None and job is not None
         try:
             async with db.begin_nested():
                 # A student created earlier in this batch whose savepoint rolled
                 # back was expunged from the session — re-add until it lands.
+                # These models link by bare FK columns (no relationship()), so
+                # the ORM does not order inserts for us: flush parents first.
                 if created_now or student.id in unsaved_students:
                     db.add(student)
                     unsaved_students.add(student.id)
+                    await db.flush()
                 else:
                     if department_id is not None and student.department_id is None:
                         student.department_id = department_id
@@ -383,6 +449,7 @@ async def run_ingestion(
                     created_at=now,
                 )
                 db.add(response)
+                await db.flush()  # answers + profile reference the response
                 for qno, choice in r.answers.items():
                     db.add(
                         SurveyAnswer(
@@ -454,14 +521,109 @@ async def run_ingestion(
 
                 await db.flush()
         except Exception as exc:  # noqa: BLE001 — per-row tolerance
+            logging.getLogger(__name__).warning("ingestion row %s rejected: %r", ref, exc)
             summary.responses_rejected += 1
-            summary.errors.append(IngestionIssue(ref, "row", str(exc).splitlines()[0][:300]))
-            continue
+            # Report the driver's own message (e.g. the FK/unique violation),
+            # not SQLAlchemy's wrapper text.
+            cause = str(getattr(exc, "orig", None) or exc).strip().splitlines()
+            summary.errors.append(IngestionIssue(ref, "row", (cause[0] if cause else repr(exc))[:300]))
+            return
 
         unsaved_students.discard(student.id)
         existing_ext_ids.add(r.external_response_id)
         summary.responses_ingested += 1
         summary.profiles_created += 1
+
+
+    # ── Per-response loop ───────────────────────────────────────────────
+    for r in responses:
+        ref = r.ref or r.external_response_id
+        issues = validate_response(r)
+        if issues:
+            summary.errors.extend(issues)
+            summary.responses_rejected += 1
+            continue
+
+        # Identity resolution
+        student: Student | None = None
+        if r.student_external_id:
+            student = roster.by_external.get(r.student_external_id.strip().lower())
+        if student is None and r.extra.get("student_id"):
+            sid = r.extra["student_id"]
+            sid = sid if isinstance(sid, UUID) else UUID(str(sid))
+            student = roster.by_id.get(sid)
+            if student is None:
+                summary.errors.append(
+                    IngestionIssue(ref, "student_id", "student not found in your institution")
+                )
+                summary.responses_rejected += 1
+                continue
+        if student is None and r.email:
+            student = roster.by_email.get(r.email.strip().lower())
+
+        created_now = False
+        if student is None:
+            created_now = True
+            student = Student(
+                id=uuid4(),
+                institution_id=institution_id,
+                department_id=department_id,
+                external_id=(r.student_external_id or "").strip() or None,
+                full_name=_display_name(r),
+                email=(r.email or "").strip().lower() or None,
+                created_at=now,
+            )
+            if student.external_id:
+                roster.by_external[student.external_id.lower()] = student
+            if student.email:
+                roster.by_email[student.email] = student
+            roster.by_id[student.id] = student
+
+        if student.id not in seen_students:
+            seen_students.add(student.id)
+            summary.students_seen += 1
+            if created_now:
+                summary.students_created += 1
+            else:
+                summary.students_matched += 1
+
+        # Idempotency
+        if r.external_response_id in existing_ext_ids:
+            summary.responses_duplicate += 1
+            continue
+
+        if dry_run:
+            existing_ext_ids.add(r.external_response_id)
+            summary.responses_ingested += 1
+            summary.profiles_created += 1
+            if r.extra.get("collaboration_pref") or r.extra.get("participation_level"):
+                summary.aux_profiles_created += 1
+            continue
+
+        pending.append((r, ref, student, created_now))
+        existing_ext_ids.add(r.external_response_id)
+
+    # ── Persist ─────────────────────────────────────────────────────────
+    # Fast path: every valid row goes in through a handful of bulk statements
+    # (a round trip each) instead of ~10 round trips per response. If the bulk
+    # write fails, fall back to the per-row path to isolate the bad rows.
+    if pending:
+        assert inst is not None and job is not None
+        try:
+            async with db.begin_nested():
+                aux_n = await _persist_bulk(
+                    db, institution_id=institution_id, department_id=department_id,
+                    inst=inst, qmap=qmap, job=job, academic_term_id=academic_term_id,
+                    now=now, version_cache=version_cache, pending=pending,
+                )
+            summary.responses_ingested += len(pending)
+            summary.profiles_created += len(pending)
+            summary.aux_profiles_created += aux_n
+        except Exception as exc:  # noqa: BLE001
+            logging.getLogger(__name__).warning(
+                "bulk ingestion failed (%r); retrying row by row", exc)
+            for rec in pending:
+                await persist_one(*rec)
 
     # ── Finalise ────────────────────────────────────────────────────────
     if summary.responses_ingested == 0 and summary.responses_duplicate == 0:

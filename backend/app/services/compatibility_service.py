@@ -496,6 +496,9 @@ async def simulate_section(
         created_at=now,
     )
     db.add(run)
+    # Rows reference the run by a bare FK column (no relationship()), so the ORM
+    # does not order these inserts for us: persist the run before its results.
+    await db.flush()
 
     result, factor_rows = build_result_rows(
         run_id=run.id,
@@ -506,6 +509,7 @@ async def simulate_section(
         now=now,
     )
     db.add(result)
+    await db.flush()  # factors reference the result the same way
     db.add_all(factor_rows)
 
     # Bump the section state out of `draft`

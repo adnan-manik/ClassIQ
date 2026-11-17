@@ -43,6 +43,7 @@ async def write_simulation(
         created_at=now,
     )
     db.add(run)
+    await db.flush()  # bare FK column, no relationship(): insert the run first
 
     result = SimulationResult(
         id=uuid4(),
@@ -57,6 +58,7 @@ async def write_simulation(
         created_at=now,
     )
     db.add(result)
+    await db.flush()  # factors reference the result the same way
 
     factor_rows: list[SimulationResultFactor] = []
     for f in output.factors:

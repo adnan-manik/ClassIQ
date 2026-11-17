@@ -458,9 +458,11 @@ async def simulate_scenario(
     if skipped:
         run.error_message = "Skipped: " + "; ".join(skipped)
     db.add(run)
+    await db.flush()  # bare FK column, no relationship(): insert the run first
     for result, factors in results:
         db.add(result)
         db.add_all(factors)
+        await db.flush()  # likewise: a result before its factors
 
     scenario.status = ScenarioStatus.simulated
     scenario.scoring_config_id = config_id
