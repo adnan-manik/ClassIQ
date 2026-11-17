@@ -40,7 +40,12 @@ class ContextSummary:
 async def _latest_results(
     db: AsyncSession, *, section_ids: list[UUID] | None, scenario_section_ids: list[UUID] | None
 ) -> dict[UUID, dict]:
-    """Latest result per section / scenario section, with factors, keyed by that id."""
+    """Latest result per section / scenario section, with factors, keyed by that id.
+
+    Two round trips however many ids come in: DISTINCT ON makes the DB return
+    only the newest result per id, and the factor rows for all of those results
+    arrive in one IN (...) query instead of one query per result.
+    """
     out: dict[UUID, dict] = {}
     col = SimulationResult.section_id if section_ids is not None else SimulationResult.scenario_section_id
     ids = section_ids if section_ids is not None else scenario_section_ids
@@ -52,29 +57,46 @@ async def _latest_results(
                 select(SimulationResult, Teacher.full_name)
                 .outerjoin(Teacher, Teacher.id == SimulationResult.recommended_teacher_id)
                 .where(col.in_(ids))
+                .distinct(col)
                 .order_by(col, desc(SimulationResult.created_at))
             )
         ).all()
     )
+    # DISTINCT ON already collapses to one row per id; the `seen` guard keeps
+    # the newest-wins contract explicit rather than implied by the dialect.
+    kept: list[tuple[SimulationResult, str | None, UUID]] = []
     seen: set[UUID] = set()
     for result, rec_name in rows:
         key = result.section_id if section_ids is not None else result.scenario_section_id
         if key in seen:
             continue
         seen.add(key)
-        factors = (
-            await db.execute(
-                select(SimulationResultFactor)
-                .where(SimulationResultFactor.simulation_result_id == result.id)
-                .order_by(SimulationResultFactor.factor_name)
+        kept.append((result, rec_name, key))
+    if not kept:
+        return out
+
+    factor_rows = (
+        await db.execute(
+            select(SimulationResultFactor)
+            .where(
+                SimulationResultFactor.simulation_result_id.in_(
+                    [r.id for r, _name, _key in kept]
+                )
             )
-        ).scalars().all()
+            .order_by(SimulationResultFactor.factor_name)
+        )
+    ).scalars().all()
+    factors_by_result: dict[UUID, dict[str, float]] = {}
+    for f in factor_rows:
+        factors_by_result.setdefault(f.simulation_result_id, {})[f.factor_name] = f.score
+
+    for result, rec_name, key in kept:
         out[key] = {
             "compatibility_score": result.compatibility_score,
             "predicted_outcome": result.predicted_outcome.value,
             "social_graph_impact": result.social_graph_impact.value,
             "recommended_teacher": rec_name,
-            "factors": {f.factor_name: f.score for f in factors},
+            "factors": factors_by_result.get(result.id, {}),
             "style_distribution": result.style_distribution,
         }
     return out
@@ -195,47 +217,67 @@ async def build_snapshot(
             .limit(MAX_SCENARIOS)
         )
     ).all()
-    scenarios = []
-    for sc, term in sc_rows:
-        ss_rows = (
+    # Every scenario's sections, rosters and results in a fixed number of round
+    # trips. This used to be ~4 queries per scenario — up to 80 network hops to
+    # the pooler for one MAX_SCENARIOS snapshot.
+    scenario_ids = [sc.id for sc, _term in sc_rows]
+    ss_rows_all = (
+        (
             await db.execute(
                 select(ScenarioSection, Course, Teacher.full_name)
                 .join(Course, Course.id == ScenarioSection.course_id)
                 .outerjoin(Teacher, Teacher.id == ScenarioSection.teacher_id)
-                .where(ScenarioSection.scenario_id == sc.id)
+                .where(ScenarioSection.scenario_id.in_(scenario_ids))
                 .order_by(Course.code, ScenarioSection.label)
             )
         ).all()
-        ss_ids = [r[0].id for r in ss_rows]
-        ss_results = await _latest_results(db, section_ids=None, scenario_section_ids=ss_ids)
-        ss_counts = {
-            r[0]: int(r[1])
-            for r in (
+        if scenario_ids
+        else []
+    )
+    # Grouping keeps the global (course code, label) ordering inside each
+    # scenario, which is exactly what the per-scenario query returned.
+    ss_by_scenario: dict[UUID, list] = {}
+    for ss, course, tname in ss_rows_all:
+        ss_by_scenario.setdefault(ss.scenario_id, []).append((ss, course, tname))
+
+    all_ss_ids = [ss.id for ss, _course, _tname in ss_rows_all]
+    ss_results = await _latest_results(
+        db, section_ids=None, scenario_section_ids=all_ss_ids
+    )
+    ss_counts = {
+        r[0]: int(r[1])
+        for r in (
+            (
                 await db.execute(
                     select(ScenarioSectionStudent.scenario_section_id, func.count())
-                    .where(ScenarioSectionStudent.scenario_section_id.in_(ss_ids or [UUID(int=0)]))
+                    .where(ScenarioSectionStudent.scenario_section_id.in_(all_ss_ids))
                     .group_by(ScenarioSectionStudent.scenario_section_id)
                 )
             ).all()
-        }
-        scenarios.append(
-            {
-                "name": sc.name,
-                "notes": sc.notes,
-                "status": sc.status.value,
-                "term": term,
-                "sections": [
-                    {
-                        "course": f"{course.code} {course.name}",
-                        "label": ss.label,
-                        "teacher": tname,
-                        "students": ss_counts.get(ss.id, 0),
-                        "latest_result": ss_results.get(ss.id),
-                    }
-                    for ss, course, tname in ss_rows
-                ],
-            }
+            if all_ss_ids
+            else []
         )
+    }
+
+    scenarios = [
+        {
+            "name": sc.name,
+            "notes": sc.notes,
+            "status": sc.status.value,
+            "term": term,
+            "sections": [
+                {
+                    "course": f"{course.code} {course.name}",
+                    "label": ss.label,
+                    "teacher": tname,
+                    "students": ss_counts.get(ss.id, 0),
+                    "latest_result": ss_results.get(ss.id),
+                }
+                for ss, course, tname in ss_by_scenario.get(sc.id, [])
+            ],
+        }
+        for sc, term in sc_rows
+    ]
 
     # ── FSLSM distribution ──────────────────────────────────────────────
     fslsm = await analytics_repo.fslsm_distribution(db, institution_id, department_id=department_id)

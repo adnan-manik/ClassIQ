@@ -60,7 +60,8 @@ def token_for(user: AuthUser, *, expired: bool = False) -> str:
     now = datetime.now(timezone.utc)
     exp = now - timedelta(minutes=5) if expired else now + timedelta(minutes=30)
     return jwt.encode(
-        {"sub": str(user.id), "aud": "authenticated", "exp": exp, "iat": now, "role": "authenticated"},
+        {"sub": str(user.id), "aud": "authenticated", "exp": exp, "iat": now,
+         "iss": f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1", "role": "authenticated"},
         settings.SUPABASE_JWT_SECRET,
         algorithm="HS256",
     )
@@ -153,7 +154,39 @@ def test_llm_status_reports_unconfigured_key(client):
     assert r.status_code == 200
     body = r.json()
     assert body["enabled"] is False
-    assert body["model"] == settings.ANTHROPIC_MODEL
+    assert body["provider"] == settings.llm_provider
+    assert body["model"] == settings.llm_model
+    # The notice must name the var for the ACTIVE provider, not a hardcoded one.
+    assert settings.llm_key_var in body["reason"]
+
+
+def test_llm_status_follows_the_provider_switch(client, monkeypatch):
+    """Flipping LLM_PROVIDER swaps the reported model and the key var named in
+    the `not configured` notice — no other code path needs to know."""
+    user = make_user(UserRole.hod)
+    use_user(user)
+    monkeypatch.setattr(settings, "LLM_PROVIDER", "groq")
+    monkeypatch.setattr(settings, "GROQ_MODEL", "llama-3.3-70b-versatile")
+
+    r = client.get("/api/llm/status", headers={"Authorization": f"Bearer {token_for(user)}"})
+    body = r.json()
+    assert body["provider"] == "groq"
+    assert body["model"] == "llama-3.3-70b-versatile"
+    assert body["enabled"] is False
+    assert "GROQ_API_KEY" in body["reason"]
+
+
+def test_llm_status_rejects_an_unknown_provider(client, monkeypatch):
+    user = make_user(UserRole.hod)
+    use_user(user)
+    monkeypatch.setattr(settings, "LLM_PROVIDER", "openai")
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "gsk-whatever")
+
+    r = client.get("/api/llm/status", headers={"Authorization": f"Bearer {token_for(user)}"})
+    body = r.json()
+    # A typo'd provider must not silently fall back to a working one.
+    assert body["enabled"] is False
+    assert "not supported" in body["reason"]
 
 
 def test_manual_ingestion_validates_answers_before_touching_db(client):

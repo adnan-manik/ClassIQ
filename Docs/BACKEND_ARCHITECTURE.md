@@ -1,9 +1,9 @@
 # ClassIQ — Backend Architecture
 
-**Status:** Draft v1 — 2026-05-11 · §5, §11 and §13 updated to the as-built state on 2026-09-04
+**Status:** Architecture reconciled with code on 2026-10-26; see [readiness review](PRODUCT_READINESS_REVIEW.md) for remaining gaps and unapplied migrations.
 **Owner:** Khubaib (backend lead)
-**Stack:** Python 3.12 · FastAPI · SQLAlchemy 2.x · Pydantic v2 · NetworkX · Supabase Postgres · Anthropic SDK
-**Related:** [DATA_MODEL.md](DATA_MODEL.md) · [project.md](../project.md)
+**Stack:** Python 3.12 · FastAPI · SQLAlchemy 2.x · Pydantic v2 · NetworkX · Supabase Postgres · Groq / Anthropic SDK
+**Related:** [DATA_MODEL.md](DATA_MODEL.md) · [project.md](project.md)
 
 ---
 
@@ -57,7 +57,7 @@ flowchart LR
 ```
 
 **Notes**
-- Frontend talks REST to FastAPI only (no direct DB writes from client beyond what Supabase Auth needs).
+- HoD/teacher pages read Supabase directly using the publishable key and RLS. Admin reads and all application-data writes go through FastAPI. Supabase Auth handles session/password operations separately.
 - Supabase Auth issues the JWT; FastAPI verifies it and resolves the institution scope.
 - The ClassIQ form-app is *upstream* — it pushes to Ingestion, never the reverse. Mr. Mubassher's FSLSM is the external source of teaching content recommendations only.
 
@@ -125,7 +125,7 @@ flowchart TB
         end
 
         subgraph llm["llm/"]
-            LLM_Cli["client (Anthropic SDK)"]
+            LLM_Cli["client (Groq / Anthropic SDK)"]
             LLM_Pr["prompts (S2)"]
         end
     end
@@ -154,7 +154,7 @@ flowchart TB
 sequenceDiagram
     autonumber
     participant C as Next.js client
-    participant FA as FastAPI<br/>(CORS + TrustedHost)
+    participant FA as FastAPI<br/>(CORS)
     participant Auth as auth.dependency<br/>(verify JWT)
     participant Tnt as tenant.dependency<br/>(institution scope)
     participant R as Router
@@ -170,7 +170,7 @@ sequenceDiagram
     Tnt-->>R: institution_scope + role
     R->>Svc: list_sections(scope)
     Svc->>Rep: get_sections(institution_id, term)
-    Rep->>PG: SELECT … (RLS auto-filters by institution)
+    Rep->>PG: SELECT … WHERE institution_id = caller institution
     PG-->>Rep: rows
     Rep-->>Svc: domain objects
     Svc-->>R: response DTO
@@ -178,9 +178,10 @@ sequenceDiagram
     FA-->>C: response
 ```
 
-**Two guarantees enforced here**
-- JWT verification on every request (no anonymous calls except `/health`, `/auth/*`).
-- RLS is enforced at DB level using the Postgres `auth.uid()` from the Supabase-issued JWT — application code never has to add `WHERE institution_id = X` manually.
+**Enforcement responsibilities**
+- Application API routes verify signed JWTs, requiring expiration, subject, audience and this project's issuer; the public health and OpenAPI endpoints are separate.
+- SQLAlchemy connects through `DATABASE_URL` as `postgres`, bypassing RLS. It does **not** set JWT GUCs. Backend queries and referenced IDs must be scoped explicitly. RLS protects the frontend's separate Supabase read path.
+- HoD department restrictions and teacher-only read policies are not yet complete. UI filters do not establish an authorization boundary.
 
 ---
 
@@ -282,7 +283,7 @@ flowchart TB
 ```
 
 **Key properties**
-- **Idempotent.** `UNIQUE (instrument_id, external_response_id)` on `survey_responses` means re-running the same import is safe.
+- **Idempotent within a tenant.** `UNIQUE (institution_id, instrument_id, external_response_id)` on `survey_responses` prevents duplicate imports without suppressing another institution's responses. Existing databases require the October ingestion migration.
 - **Source-agnostic.** Adapters normalize to one internal shape — the pipeline downstream is unaware of the origin.
 - **Re-scoreable.** Raw answers stored separately from derived scores. If the FSLSM scorer changes, re-run scoring without re-collecting responses.
 - **As built (Sep 2026):** adapters in `app/ingestion/` (`rdf_parser`, `csv_adapter`, `form_app_adapter`, `manual_admin_adapter`) normalise to `InternalResponse`; `services/ingestion_service.py` runs the pipeline with a savepoint per response so one bad row never sinks a batch, and `dry_run=True` validates without writing. The default ILS instrument is defined in `app/ingestion/ils_instrument.py` and seeded on first use (also `db/migrations/2026-09-04_seed_ils_instrument.sql`).
@@ -430,8 +431,8 @@ flowchart LR
 ```
 
 **Decision points**
-- Railway is the primary backend host per [project.md §14](../project.md). Render is the documented fallback if Railway free-tier ToS changes.
-- `SUPABASE_SERVICE_ROLE_KEY` lives **only** in the backend env. Frontend uses `ANON_KEY` (RLS-bound).
+- Railway is the planned primary backend host per [project.md §14](project.md), with Render as the documented fallback; hosting terms and deployment remain to be verified.
+- `SUPABASE_SECRET_KEY` is server-only for Auth administration. The browser uses `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`; database access uses the separate server-only `DATABASE_URL`.
 - Anthropic key is backend-only (S2 stretch goal).
 
 ---
@@ -447,22 +448,21 @@ sequenceDiagram
     participant PG as Postgres
 
     C->>API: GET /api/students (Authorization: Bearer JWT)
-    API->>API: decode JWT (using SUPABASE_JWT_SECRET)
-    Note over API: extract sub = auth.uid()
-
-    API->>PG: SET LOCAL request.jwt.claims = '<jwt>'<br/>(passes auth.uid() into Postgres GUC)
-    Note over PG: auth.uid() now resolves<br/>inside RLS policies
-
-    API->>PG: SELECT * FROM students
-    Note over PG: RLS policy:<br/>institution_id = current_institution_id()<br/>uses auth.uid() to look up<br/>auth_users.institution_id
+    API->>API: verify JWT signature, issuer, audience, expiry, subject
+    API->>PG: SELECT auth_users WHERE id = subject
+    PG-->>API: active account, role, institution_id
+    Note over API,PG: DATABASE_URL uses postgres and bypasses RLS
+    API->>PG: SELECT students WHERE institution_id = caller institution
 
     PG-->>API: rows scoped to tenant
     API-->>C: 200 JSON
 
-    Note over C,PG: Cross-tenant access is impossible —<br/>RLS cannot be bypassed by the client.<br/>Only SERVICE_ROLE_KEY (backend-only)<br/>bypasses RLS, for admin/ingestion tasks.
+    Note over C,PG: Browser Supabase reads use RLS separately.<br/>Browser writes are denied by the October migration.<br/>Backend isolation depends on explicit query and reference checks.
 ```
 
-**Tenant-scoped service role usage:** for ingestion and super-admin actions, the backend connects with `SERVICE_ROLE_KEY` and explicitly passes `institution_id` in queries — RLS bypass is intentional but always paired with explicit scoping.
+**Write integrity:** repositories creating/updating sections and creating scenarios flush without committing. Their callers commit the mutation and audit entry together. Scenario application locks the scenario and existing destination sections, rejects active/archived destinations, and commits only after all live sections are rescored. Scoring does not independently commit.
+
+**Account provisioning:** trusted role and institution are stored in `app_metadata`; mutable `user_metadata` supplies display names only. Passwordless provisioning creates an unconfirmed account, then calls the invite endpoint explicitly. Delivery and password completion still need end-to-end verification; partial provisioning must be reconciled before retrying.
 
 ---
 

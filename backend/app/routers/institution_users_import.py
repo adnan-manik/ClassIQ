@@ -68,15 +68,19 @@ async def preview_import(
     dup_lines = {e.line for e in dup_errors}
     valid_rows = [r for r in parsed.valid if r.line not in dup_lines]
 
-    # Validate department codes against this institution's departments
+    # Validate department codes against this institution's departments. One
+    # query for the whole file: this used to run per row, so a 200-line CSV
+    # cost 200 round trips before the admin saw a preview.
+    known_codes = await ia_repo.department_codes_to_ids(
+        db,
+        actor.institution_id,
+        [r.department_code for r in valid_rows if r.department_code is not None],
+    )
     code_errors: list[UserImportError] = []
     for r in valid_rows:
         if r.department_code is None:
             continue
-        dept_id = await ia_repo.department_code_to_id(
-            db, actor.institution_id, r.department_code
-        )
-        if dept_id is None:
+        if r.department_code not in known_codes:
             code_errors.append(
                 UserImportError(
                     r.line,
@@ -121,13 +125,19 @@ async def commit_import(
     dup_lines = {e.line for e in dup_errors}
     rows = [r for r in parsed.valid if r.line not in dup_lines]
 
-    # Resolve department codes once
-    dept_cache: dict[str, UUID | None] = {}
-    for r in rows:
-        if r.department_code and r.department_code not in dept_cache:
-            dept_cache[r.department_code] = await ia_repo.department_code_to_id(
-                db, actor.institution_id, r.department_code
-            )
+    # Resolve every department code, and find which emails are already taken,
+    # in two queries. The email check used to run once per row inside the loop
+    # below, which on a large staff import dwarfed the work of creating them.
+    dept_cache = await ia_repo.department_codes_to_ids(
+        db,
+        actor.institution_id,
+        [r.department_code for r in rows if r.department_code],
+    )
+    # Student rows never reach the auth_users check, but including their emails
+    # costs one list entry each and keeps role parsing inside the try below.
+    taken_emails = await ia_repo.existing_auth_user_emails(
+        db, actor.institution_id, [r.email for r in rows]
+    )
 
     # Create the ingestion_jobs row up front so we can attribute errors to it.
     job = IngestionJob(
@@ -179,10 +189,7 @@ async def commit_import(
                 continue
 
             # Reject if email already exists in this tenant
-            existing = await ia_repo.auth_user_by_email(
-                db, actor.institution_id, r.email
-            )
-            if existing is not None:
+            if r.email in taken_emails:
                 failed += 1
                 errors.append(
                     UserImportError(

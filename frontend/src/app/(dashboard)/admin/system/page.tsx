@@ -1,7 +1,7 @@
 import StatCard from "@/components/StatCard";
+import { getAuthContext } from "@/lib/auth";
 import { ApiError, serverFetch } from "@/lib/api.server";
 import { BRAND } from "@/lib/brand";
-import { createClient } from "@/lib/supabase/server";
 import type { IngestionJobItem, SystemOverview } from "@/lib/types";
 import {
   Building2,
@@ -14,16 +14,8 @@ import {
 import { redirect } from "next/navigation";
 
 export default async function SystemPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user, profile } = await getAuthContext();
   if (!user) redirect("/login");
-  const { data: profile } = await supabase
-    .from("auth_users")
-    .select("role")
-    .eq("id", user.id)
-    .single();
   if (profile?.role !== "super_admin") redirect("/admin");
 
   let overview: SystemOverview | null = null;

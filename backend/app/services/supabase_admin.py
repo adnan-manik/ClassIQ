@@ -1,7 +1,7 @@
 """Async HTTP client for Supabase Auth Admin API.
 
 Mirrors the header + body shape of db/seed_users.mjs. The auth trigger at
-db/auth_trigger.sql writes public.auth_users from raw_user_meta_data, so we
+db/auth_trigger.sql writes public.auth_users from raw_app_meta_data, so we
 just POST to /auth/v1/admin/users and the public.auth_users row appears.
 """
 
@@ -59,18 +59,36 @@ async def invite_user_by_email(
     role: str,
     full_name: str,
 ) -> dict[str, Any]:
-    """Create a user without a password; Supabase sends an invite/magic link."""
-    return await _post_user(
+    """Provision trusted metadata, then explicitly request an invitation email.
+
+    Admin create-user does not send email. The invite endpoint supports existing,
+    unconfirmed users, allowing the insert trigger to trust app_metadata only.
+    """
+    user = await _post_user(
         {
             "email": email,
             "email_confirm": False,
-            "user_metadata": {
+            "app_metadata": {
                 "institution_id": str(institution_id),
                 "role": role,
-                "full_name": full_name,
             },
+            "user_metadata": {"full_name": full_name},
         }
     )
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        res = await client.post(
+            f"{settings.SUPABASE_URL}/auth/v1/invite",
+            headers=_headers(),
+            params={"redirect_to": f"{settings.FRONTEND_URL.rstrip('/')}/login"},
+            json={"email": email},
+        )
+    if res.status_code >= 300:
+        raise SupabaseAdminError(
+            res.status_code,
+            {"message": "Account created but invitation could not be sent; resend it from Auth administration",
+             "user_id": user["id"]},
+        )
+    return user
 
 
 async def create_user_with_password(
@@ -87,11 +105,11 @@ async def create_user_with_password(
             "email": email,
             "password": password,
             "email_confirm": True,
-            "user_metadata": {
+            "app_metadata": {
                 "institution_id": str(institution_id),
                 "role": role,
-                "full_name": full_name,
             },
+            "user_metadata": {"full_name": full_name},
         }
     )
 

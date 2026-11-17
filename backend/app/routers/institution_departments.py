@@ -37,9 +37,13 @@ async def list_departments(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> list[DepartmentListItem]:
     rows = await ia_repo.list_departments_with_counts(db, actor.institution_id)
+    # One query for every department's HODs, not one per department.
+    hods_by_dept = await ia_repo.list_hods_of_departments(
+        db, [dept.id for dept, *_ in rows]
+    )
     items: list[DepartmentListItem] = []
     for dept, members, teachers, students, courses in rows:
-        hods = await ia_repo.list_hods_of_department(db, dept.id)
+        hods = hods_by_dept.get(dept.id, [])
         items.append(
             DepartmentListItem(
                 id=dept.id,

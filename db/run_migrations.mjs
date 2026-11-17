@@ -16,11 +16,12 @@ const FILES =
 
 // Using the Session Pooler (IPv4) — direct host db.<ref>.supabase.co is IPv6-only.
 // Session pooler supports the DDL we need (CREATE FUNCTION, CREATE TRIGGER).
+// Host/user can be overridden with PGHOST / PGUSER; defaults point at the current project.
 const client = new Client({
-  host: "aws-1-ap-southeast-1.pooler.supabase.com",
+  host: process.env.PGHOST ?? "aws-1-ap-south-1.pooler.supabase.com",
   port: 5432,
   database: "postgres",
-  user: "postgres.lfvsppanrtwywvvqoiiq",
+  user: process.env.PGUSER ?? "postgres.kmmkpfhwvgfntzjshuej",
   password: process.env.PGPASSWORD,
   ssl: { rejectUnauthorized: false },
 });

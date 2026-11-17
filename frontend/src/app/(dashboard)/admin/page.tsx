@@ -1,7 +1,7 @@
 import StatCard from "@/components/StatCard";
+import { getAuthContext } from "@/lib/auth";
 import { BRAND } from "@/lib/brand";
 import { ApiError, serverFetch } from "@/lib/api.server";
-import { createClient } from "@/lib/supabase/server";
 import type {
   AdminInstitution,
   InstitutionAnalyticsOverview,
@@ -19,17 +19,8 @@ import {
 import { redirect } from "next/navigation";
 
 export default async function AdminOverviewPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user, profile } = await getAuthContext();
   if (!user) redirect("/login");
-
-  const { data: profile } = await supabase
-    .from("auth_users")
-    .select("full_name, email, role, institution_id")
-    .eq("id", user.id)
-    .single();
 
   if (!profile) redirect("/login");
   const role = profile.role as UserRole;
@@ -38,7 +29,7 @@ export default async function AdminOverviewPage() {
     return <SuperAdminOverview />;
   }
   if (role === "institution_admin") {
-    return <InstitutionAdminOverview institutionName={profile.full_name} />;
+    return <InstitutionAdminOverview institutionName={profile.full_name ?? ""} />;
   }
   redirect("/");
 }

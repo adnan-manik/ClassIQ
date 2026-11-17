@@ -241,7 +241,7 @@ export default function AskView({
         </form>
         {status?.enabled && (
           <p className="text-[11px] mt-2" style={{ color: BRAND.textSubtle }}>
-            Model {status.model} · answers capped at {status.max_output_tokens} tokens · questions are logged to the audit trail.
+            Model {status.model} ({status.provider}) · answers capped at {status.max_output_tokens} tokens · questions are logged to the audit trail.
           </p>
         )}
       </div>

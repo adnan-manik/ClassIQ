@@ -17,12 +17,13 @@ import {
 export default async function HodDashboardPage() {
   const supabase = await createClient();
 
+  // The simulation results are fetched after this, scoped to the sections it
+  // returns, so the sections query leads. Everything else still goes out with it.
   const [
     { count: studentCount },
     { count: teacherCount },
     { data: sections },
     { data: profiles },
-    { data: simResults },
     { data: terms },
     { data: institutions },
   ] = await Promise.all([
@@ -34,17 +35,20 @@ export default async function HodDashboardPage() {
         "id, label, state, course:courses(code, name), teacher:teachers(full_name), section_students(count)",
       )
       .order("label"),
+    // Same three conditions the backend's fslsm_distribution applies: the
+    // current profile, not soft-deleted, for a student who is not soft-deleted
+    // either. `!inner` makes the embed a join so the filter on it restricts
+    // which profiles come back, rather than just nulling the nested object.
+    // Without these, this tally counted removed students while the admin
+    // analytics page did not, and the two screens disagreed.
     supabase
       .from("student_profiles")
       .select(
-        "active_reflective_score, sensing_intuitive_score, visual_verbal_score, sequential_global_score, dominant_axis",
+        "active_reflective_score, sensing_intuitive_score, visual_verbal_score, sequential_global_score, dominant_axis, students!inner(deleted_at)",
       )
-      .eq("is_current", true),
-    supabase
-      .from("simulation_results")
-      .select(
-        "section_id, compatibility_score, predicted_outcome, social_graph_impact",
-      ),
+      .eq("is_current", true)
+      .is("deleted_at", null)
+      .is("students.deleted_at", null),
     supabase
       .from("academic_terms")
       .select("name")
@@ -61,15 +65,40 @@ export default async function HodDashboardPage() {
 
   const sectionsArr = sections ?? [];
   const profilesArr = profiles ?? [];
-  const simBySec = new Map((simResults ?? []).map((r) => [r.section_id, r]));
+  const sectionIds = sectionsArr.map((sec) => sec.id as string);
 
-  const avgScore =
-    simResults && simResults.length > 0
-      ? Math.round(
-          simResults.reduce((a, r) => a + r.compatibility_score, 0) /
-            simResults.length,
+  // Results for the sections on this page, newest first. Unfiltered, this
+  // selected every simulation_results row the caller can see — all history,
+  // and scenario rows too, since what-if runs share the table and carry a
+  // null section_id. `in` on the page's section ids excludes both.
+  const { data: simResults } = sectionIds.length
+    ? await supabase
+        .from("simulation_results")
+        .select(
+          "section_id, compatibility_score, predicted_outcome, social_graph_impact, created_at",
         )
-      : 0;
+        .in("section_id", sectionIds)
+        .order("created_at", { ascending: false })
+    : { data: [] };
+
+  // Newest first, so the first row seen for a section is its latest result.
+  // Mapping the whole list kept whichever row happened to come last instead.
+  type SimRow = NonNullable<typeof simResults>[number];
+  const simBySec = new Map<string, SimRow>();
+  for (const r of simResults ?? []) {
+    if (r.section_id && !simBySec.has(r.section_id)) {
+      simBySec.set(r.section_id, r);
+    }
+  }
+
+  // Averaged over each section's current score, not over every run ever made.
+  const latestScores = [...simBySec.values()].map((r) => r.compatibility_score);
+  const avgScore = latestScores.length
+    ? Math.round(
+        latestScores.reduce((sum, score) => sum + score, 0) /
+          latestScores.length,
+      )
+    : 0;
 
   // Tally dominant axis per FSLSM axis
   const axisCounts: Record<FslsmAxis, number> = {

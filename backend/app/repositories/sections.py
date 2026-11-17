@@ -4,6 +4,7 @@ Pulls section + course + teacher + teacher's current profile + the latest
 simulation result (and its factors) in a couple of round-trips.
 """
 
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
@@ -139,6 +140,57 @@ async def latest_result_for_section(
     return result, factors, recommended
 
 
+async def latest_results_for_sections(
+    db: AsyncSession,
+    section_ids: Sequence[UUID],
+) -> dict[UUID, tuple[SimulationResult, list[SimulationResultFactor], Teacher | None]]:
+    """Latest live result per section, with factors, keyed by section_id.
+
+    Two round trips however many sections come in. Calling
+    `latest_result_for_section` once per row cost two per section, which is
+    what the sections list page used to do.
+    """
+    ids = list(section_ids)
+    if not ids:
+        return {}
+
+    rows = (
+        await db.execute(
+            select(SimulationResult, Teacher)
+            .outerjoin(Teacher, Teacher.id == SimulationResult.recommended_teacher_id)
+            .where(SimulationResult.section_id.in_(ids))
+            .distinct(SimulationResult.section_id)
+            .order_by(SimulationResult.section_id, desc(SimulationResult.created_at))
+        )
+    ).all()
+    if not rows:
+        return {}
+
+    factors_by_result: dict[UUID, list[SimulationResultFactor]] = {}
+    factor_rows = (
+        await db.execute(
+            select(SimulationResultFactor)
+            .where(
+                SimulationResultFactor.simulation_result_id.in_(
+                    [result.id for result, _rec in rows]
+                )
+            )
+            .order_by(SimulationResultFactor.factor_name)
+        )
+    ).scalars().all()
+    for f in factor_rows:
+        factors_by_result.setdefault(f.simulation_result_id, []).append(f)
+
+    return {
+        result.section_id: (
+            result,
+            factors_by_result.get(result.id, []),
+            recommended,
+        )
+        for result, recommended in rows
+    }
+
+
 # ── Writes ──────────────────────────────────────────────────────────────────
 # The backend bypasses RLS (service connection), so every referenced entity is
 # explicitly re-scoped to the caller's institution to prevent cross-tenant
@@ -220,6 +272,8 @@ async def create_section(
         raise SectionRefError("Teacher not found in your institution")
 
     valid_students = await _valid_student_ids(db, student_ids, institution_id)
+    if set(valid_students) != set(student_ids):
+        raise SectionRefError("One or more students are not in your institution")
 
     now = datetime.now(timezone.utc)
     section_id = uuid4()
@@ -240,7 +294,7 @@ async def create_section(
         db.add(SectionStudent(section_id=section_id, student_id=sid, added_at=now))
 
     try:
-        await db.commit()
+        await db.flush()
     except IntegrityError as exc:
         await db.rollback()
         raise SectionRefError(
@@ -272,6 +326,8 @@ async def update_section(
     ).scalar_one_or_none()
     if sec is None:
         return False
+    if sec.state in (SectionState.active, SectionState.archived):
+        raise SectionRefError(f"Cannot edit a {sec.state.value} section")
 
     changed = False
     if set_label and label and label.strip():
@@ -292,7 +348,7 @@ async def update_section(
         sec.updated_at = datetime.now(timezone.utc)
 
     try:
-        await db.commit()
+        await db.flush()
     except IntegrityError as exc:
         await db.rollback()
         raise SectionRefError(
@@ -330,6 +386,8 @@ async def reconcile_roster(
     Absent students are soft-removed, new ones added, previously removed ones
     restored. Returns (added, removed). Does not commit."""
     wanted = set(await _valid_student_ids(db, student_ids, institution_id))
+    if wanted != set(student_ids):
+        raise SectionRefError("One or more students are not in your institution")
     existing = list(
         (
             await db.execute(

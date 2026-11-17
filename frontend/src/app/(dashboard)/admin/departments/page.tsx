@@ -1,24 +1,16 @@
 import CreateDepartmentDialog from "@/components/admin/CreateDepartmentDialog";
 import EmptyState from "@/components/EmptyState";
+import { getAuthContext } from "@/lib/auth";
 import { ApiError, serverFetch } from "@/lib/api.server";
 import { BRAND } from "@/lib/brand";
-import { createClient } from "@/lib/supabase/server";
 import type { DepartmentItem, UserRole } from "@/lib/types";
 import { GitBranchPlus } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
 export default async function DepartmentsPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user, profile } = await getAuthContext();
   if (!user) redirect("/login");
-  const { data: profile } = await supabase
-    .from("auth_users")
-    .select("role")
-    .eq("id", user.id)
-    .single();
   const role = profile?.role as UserRole | undefined;
   if (role !== "institution_admin" && role !== "super_admin") redirect("/admin");
 

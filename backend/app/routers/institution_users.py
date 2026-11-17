@@ -8,22 +8,26 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.deps import require_role
 from app.models.auth_user import AuthUser, UserRole
+from app.models.institution import Department
 from app.models.student import Student
 from app.models.teacher import Teacher
 from app.models.user_department import UserDepartment
 from app.repositories import institutions_admin as ia_repo
+from app.repositories import refs
 from app.schemas.institution_admin import UserCreate, UserListItem, UserPatch
 from app.services import supabase_admin
 from app.services.audit import write_audit
 
 router = APIRouter(prefix="/institution/users", tags=["institution: users"])
 
-_admin_gate = require_role(UserRole.institution_admin, UserRole.super_admin, UserRole.hod)
+_admin_gate = require_role(UserRole.institution_admin, UserRole.super_admin)
+_roster_gate = require_role(UserRole.institution_admin, UserRole.super_admin, UserRole.hod)
 
 # Roles the institution_admin is allowed to create (cannot create super_admin)
 CREATABLE_ROLES = {
@@ -58,11 +62,30 @@ async def list_users(
 @router.post("", response_model=UserListItem, status_code=201)
 async def create_user(
     body: UserCreate,
-    actor: Annotated[AuthUser, Depends(_admin_gate)],
+    actor: Annotated[AuthUser, Depends(_roster_gate)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> UserListItem:
     if body.role not in CREATABLE_ROLES:
         raise HTTPException(403, f"Cannot create users with role={body.role.value}")
+
+    if actor.role == UserRole.hod:
+        if body.role not in (UserRole.student, UserRole.teacher):
+            raise HTTPException(403, "HoDs can only create students and teachers")
+        departments = list((await db.execute(
+            select(Department.id)
+            .join(UserDepartment, UserDepartment.department_id == Department.id)
+            .where(UserDepartment.auth_user_id == actor.id)
+            .where(Department.institution_id == actor.institution_id)
+            .where(Department.deleted_at.is_(None))
+        )).scalars().all())
+        if body.department_id is None and len(departments) == 1:
+            body = body.model_copy(update={"department_id": departments[0]})
+        if body.department_id not in departments:
+            raise HTTPException(403, "Choose one of your assigned departments")
+    if body.department_id is not None and not await refs.department_in_institution(
+        db, body.department_id, actor.institution_id
+    ):
+        raise HTTPException(400, "Department not found in your institution")
 
     # Students don't require an auth account — they're just roster rows
     if body.role == UserRole.student:
@@ -188,6 +211,10 @@ async def patch_user(
     user = await ia_repo.get_auth_user(db, actor.institution_id, user_id)
     if not user:
         raise HTTPException(404, "User not found")
+    if user.role == UserRole.super_admin and actor.role != UserRole.super_admin:
+        raise HTTPException(403, "Only a super admin can modify a super admin")
+    if user.id == actor.id and body.is_active is False:
+        raise HTTPException(400, "You cannot deactivate your own account")
     changes: dict[str, object] = {}
     if body.full_name is not None:
         user.full_name = body.full_name

@@ -4,6 +4,12 @@
 profiles students with the Felder–Silverman Learning Style Model (FSLSM), models the
 social graph of a cohort, and scores section compositions for compatibility.
 
+**Readiness review (26 October 2026):** this is a working prototype with automated
+tests, not yet a verified production release. See
+[the review and paid-product roadmap](Docs/PRODUCT_READINESS_REVIEW.md) for fixes,
+remaining launch blockers, and a proposed paid pilot. Compatibility scores are
+heuristic decision-support indicators, not validated predictions of grades.
+
 This repo is a monorepo with three pieces:
 
 | Folder      | Stack                                              | Runs on |
@@ -25,7 +31,7 @@ JWTs. See [`Docs/BACKEND_ARCHITECTURE.md`](Docs/BACKEND_ARCHITECTURE.md) and
 - **Python 3.12+** (tested on 3.14)
 - **Node.js 20+** (tested on 25) and npm
 - A **Supabase project** (URL, keys, JWT secret, and DB password). The example env files
-  point at the team's shared dev project.
+  point at the team's shared dev project; use a separate project for testing migrations.
 
 ---
 
@@ -38,7 +44,7 @@ frontend. Use two terminals for the two long-running servers.
 
 ```bash
 git clone <repo-url>
-cd FYP-
+cd FYP-ClassIQ
 ```
 
 ### 1. Database — apply schema, auth trigger & seed (one-time)
@@ -49,11 +55,11 @@ Supabase database password (Dashboard → Settings → Database).
 
 ```bash
 cd db
-npm install                       # installs the `pg` driver
+npm ci                            # migration runner + isolated SQL tests
 
 # Apply core schema, then the auth trigger + minimal seed
 PGPASSWORD='<db-password>' node run_migrations.mjs schema.sql
-PGPASSWORD='<db-password>' node run_migrations.mjs auth_trigger.sql seed_minimal.sql
+PGPASSWORD='<db-password>' node run_migrations.mjs migration_institution_admin.sql auth_trigger.sql seed_minimal.sql migrations/2026-09-04_seed_ils_instrument.sql migrations/2026-09-04_early_warning.sql migrations/2026-10-25_browser_read_only.sql migrations/2026-10-26_ingestion_scope.sql migrations/2026-11-07_simulation_read_indexes.sql
 
 # (optional) richer demo cohort for dashboards
 PGPASSWORD='<db-password>' node seed_demo_data.mjs
@@ -61,6 +67,14 @@ PGPASSWORD='<db-password>' node seed_demo_data.mjs
 
 > Already provisioned by a teammate? You can skip this — the shared Supabase project
 > keeps its schema and seed data between runs.
+
+The October security and ingestion migrations are **prepared locally, not applied
+to the shared project by this review**. For existing installations, apply
+`auth_trigger.sql`, then the two October migrations above before releasing the
+matching backend changes. Provision role and institution through trusted
+`app_metadata`; `user_metadata` is only for display information. See the review
+for deployment order and verification. The command examples above use Bash;
+in PowerShell set `$env:PGPASSWORD = '<db-password>'` before running `node`.
 
 ### 2. Backend — FastAPI on `:8000`
 
@@ -130,6 +144,8 @@ seeded user to reach the dashboards.
 | `SUPABASE_SECRET_KEY` | Service key for admin ops (provisioning users) — optional |
 | `DATABASE_URL` | `postgresql+asyncpg://…@…pooler.supabase.com:5432/postgres` (session pooler, IPv4) |
 | `CORS_ORIGINS` | Comma-separated; include `http://localhost:3000` |
+| `LLM_PROVIDER` | `groq` or `anthropic` — picks the S2 assistant's backend |
+| `GROQ_API_KEY` / `ANTHROPIC_API_KEY` | Key for the selected provider only — see [Ask ClassIQ (S2)](#ask-classiq-s2) |
 
 ### `frontend/.env.local`
 
@@ -171,8 +187,8 @@ curl -i http://localhost:3000/            # 307 redirect to /login when unauthen
   print/PDF export, teacher dashboard, institution analytics with department drill-down.
 - **Phase 5 — Stretch goals:** **S1 early warning** (record attendance / grades per
   week, compare with the predicted outcome, raise and manage flags), **S2 Ask ClassIQ**
-  (natural-language questions over the tenant's planning data via the Claude API,
-  backend-only key), **S3 longitudinal analytics** (profile-version history per student,
+  (natural-language questions over the tenant's planning data via Groq or the
+  Claude API, backend-only key), **S3 longitudinal analytics** (profile-version history per student,
   cohort drift per term).
 - **Phase 6 — Tests:** `pytest` suite for the engines, adapters and the auth path
   (`backend/tests/`), an RLS-isolation test that runs when `TEST_DATABASE_URL` is set,
@@ -211,13 +227,32 @@ TEST_DATABASE_URL='postgresql+asyncpg://…' pytest tests/rls -q
 
 # frontend
 cd frontend && npm test
+
+# isolated PostgreSQL security + migration tests (no Supabase credentials)
+cd db && npm ci && npm test
 ```
 
 ### Ask ClassIQ (S2)
 
-Set `ANTHROPIC_API_KEY` in `backend/.env` (never in the frontend). Model and per-query
-output cap are `ANTHROPIC_MODEL` (default `claude-opus-5`) and `LLM_MAX_OUTPUT_TOKENS`.
-Without a key the page shows a "not configured" notice and `/api/llm/query` returns 503.
+Two providers ship; `LLM_PROVIDER` in `backend/.env` picks one. Set **only** the
+selected provider's key, always backend-side — never in the frontend, where a
+`NEXT_PUBLIC_` var would ship the key to the browser.
+
+| `LLM_PROVIDER` | Key | Model var | Default |
+|----------------|-----|-----------|---------|
+| `groq`      | `GROQ_API_KEY`      | `GROQ_MODEL`      | `llama-3.3-70b-versatile` |
+| `anthropic` | `ANTHROPIC_API_KEY` | `ANTHROPIC_MODEL` | `claude-opus-5` |
+
+`LLM_MAX_OUTPUT_TOKENS` caps each answer on both. `LLM_EFFORT` is Anthropic-only.
+Restart uvicorn after editing — settings are read once at import.
+
+Without a key the page shows a "not configured" notice naming the variable for the
+active provider, and `/api/llm/query` returns 503. `GET /api/llm/status` reports
+`{enabled, provider, model, max_output_tokens, reason}`.
+
+> Groq has no prompt caching and no refusal stop reason, so `cache_read_input_tokens`
+> / `cache_creation_input_tokens` are always 0 and `refusal` is always `false` on that
+> provider. The response shape is identical either way, so nothing downstream branches.
 
 ## Project layout
 
@@ -231,7 +266,7 @@ FYP-/
 │       ├── repositories/ SQLAlchemy DB access
 │       ├── engines/      pure computation (FSLSM, scoring, NetworkX, compare, early warning)
 │       ├── ingestion/    survey adapters: RDF, CSV, form-app JSON, manual entry
-│       ├── llm/          Claude API client, prompts, tenant snapshot (S2)
+│       ├── llm/          provider client (Groq / Claude), prompts, tenant snapshot (S2)
 │       ├── core/         config + JWT security
 │       └── deps.py       auth dependencies, current_user, DB session
 │   └── tests/        pytest: engines, ingestion adapters, auth path, RLS isolation

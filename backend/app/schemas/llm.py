@@ -47,6 +47,7 @@ class LLMQueryResponse(APIModel):
 
 class LLMStatus(APIModel):
     enabled: bool
+    provider: str
     model: str
     max_output_tokens: int
     reason: str | None = None

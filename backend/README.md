@@ -39,7 +39,7 @@ Open <http://localhost:8000/docs> for the live OpenAPI explorer.
 | `reports` | `/api/reports/sections/{id}` | F6 report payload (staff, or the assigned teacher) |
 | `longitudinal` | `/api/analytics/longitudinal` | S3 cohort drift per term / version, top shifts |
 | `early_warning` | `/api/early-warning` | S1 outcomes, evaluate, flags, overview |
-| `llm` | `/api/llm` | S2 Ask ClassIQ (`status`, `query`) — needs `ANTHROPIC_API_KEY` |
+| `llm` | `/api/llm` | S2 Ask ClassIQ (`status`, `query`) — needs the `LLM_PROVIDER` key (`GROQ_API_KEY` or `ANTHROPIC_API_KEY`) |
 | `admin_*` | `/api/admin/*` | super-admin: institutions, system overview / audit / ingestion jobs |
 | `institution_*` | `/api/institution/*` | departments, users (+ CSV import), courses, analytics, audit |
 

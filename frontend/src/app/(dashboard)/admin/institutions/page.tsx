@@ -1,25 +1,17 @@
 import CreateInstitutionDialog from "@/components/admin/CreateInstitutionDialog";
 import EmptyState from "@/components/EmptyState";
+import { getAuthContext } from "@/lib/auth";
 import { ApiError, serverFetch } from "@/lib/api.server";
 import { BRAND } from "@/lib/brand";
-import { createClient } from "@/lib/supabase/server";
 import type { AdminInstitution } from "@/lib/types";
 import { Building2 } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
 export default async function InstitutionsPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user, profile } = await getAuthContext();
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase
-    .from("auth_users")
-    .select("role")
-    .eq("id", user.id)
-    .single();
   if (profile?.role !== "super_admin") redirect("/admin");
 
   let institutions: AdminInstitution[] = [];

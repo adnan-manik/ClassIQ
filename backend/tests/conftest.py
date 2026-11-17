@@ -19,7 +19,14 @@ os.environ.setdefault(
     "DATABASE_URL", "postgresql+asyncpg://test:test@127.0.0.1:1/test"
 )
 os.environ.setdefault("CORS_ORIGINS", "http://localhost:3000")
-os.environ.pop("ANTHROPIC_API_KEY", None)
+
+# Pin the LLM off, for every provider. These are SET to "" rather than popped:
+# popping only clears the process env, and pydantic-settings would then fall
+# back to the developer's real `.env` — so a machine with a live key would fail
+# the "unconfigured" tests. An empty env var outranks the dotenv value.
+os.environ["LLM_PROVIDER"] = "anthropic"
+os.environ["ANTHROPIC_API_KEY"] = ""
+os.environ["GROQ_API_KEY"] = ""
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:

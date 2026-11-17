@@ -1,3 +1,4 @@
+import { getAuthContext } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { UserRole } from "@/lib/types";
 import { redirect } from "next/navigation";
@@ -6,16 +7,9 @@ import LongitudinalView from "./LongitudinalView";
 /** S3 — Longitudinal learning-style analytics (HoD / institution admin). */
 export default async function LongitudinalPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user, profile } = await getAuthContext();
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase
-    .from("auth_users")
-    .select("role")
-    .eq("id", user.id)
-    .single();
   const role = profile?.role as UserRole | undefined;
   if (role !== "hod" && role !== "institution_admin" && role !== "super_admin") {
     redirect("/");

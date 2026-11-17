@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -84,6 +85,28 @@ async def list_hods_of_department(
     return list((await db.execute(stmt)).scalars().all())
 
 
+async def list_hods_of_departments(
+    db: AsyncSession, department_ids: Sequence[UUID]
+) -> dict[UUID, list[AuthUser]]:
+    """HODs grouped by department, in one query rather than one per department."""
+    ids = list(department_ids)
+    if not ids:
+        return {}
+    rows = (
+        await db.execute(
+            select(UserDepartment.department_id, AuthUser)
+            .join(AuthUser, AuthUser.id == UserDepartment.auth_user_id)
+            .where(UserDepartment.department_id.in_(ids))
+            .where(AuthUser.role == UserRole.hod)
+            .order_by(AuthUser.full_name)
+        )
+    ).all()
+    out: dict[UUID, list[AuthUser]] = {}
+    for department_id, hod in rows:
+        out.setdefault(department_id, []).append(hod)
+    return out
+
+
 async def department_code_exists(
     db: AsyncSession, institution_id: UUID, code: str
 ) -> bool:
@@ -97,16 +120,26 @@ async def department_code_exists(
     return ((await db.execute(stmt)).scalar_one() or 0) > 0
 
 
-async def department_code_to_id(
-    db: AsyncSession, institution_id: UUID, code: str
-) -> UUID | None:
-    stmt = (
-        select(Department.id)
-        .where(Department.institution_id == institution_id)
-        .where(Department.code == code)
-        .where(Department.deleted_at.is_(None))
-    )
-    return (await db.execute(stmt)).scalar_one_or_none()
+async def department_codes_to_ids(
+    db: AsyncSession, institution_id: UUID, codes: Sequence[str]
+) -> dict[str, UUID]:
+    """Resolve several department codes at once, exact-match as before.
+
+    A code with no live department is simply absent from the result, so callers
+    still get None from `.get(code)`.
+    """
+    wanted = list(dict.fromkeys(codes))
+    if not wanted:
+        return {}
+    rows = (
+        await db.execute(
+            select(Department.code, Department.id)
+            .where(Department.institution_id == institution_id)
+            .where(Department.code.in_(wanted))
+            .where(Department.deleted_at.is_(None))
+        )
+    ).all()
+    return {code: department_id for code, department_id in rows}
 
 
 # ─── Users ──────────────────────────────────────────────────────────────────
@@ -163,6 +196,30 @@ async def auth_user_by_email(
         .where(AuthUser.email == email)
     )
     return (await db.execute(stmt)).scalar_one_or_none()
+
+
+async def existing_auth_user_emails(
+    db: AsyncSession, institution_id: UUID, emails: Sequence[str]
+) -> set[str]:
+    """Which of `emails` already have an auth_users row in this institution.
+
+    Matched exactly, like `auth_user_by_email`, so the bulk import rejects the
+    same rows it did when it asked one query at a time.
+    """
+    wanted = list(dict.fromkeys(emails))
+    if not wanted:
+        return set()
+    return set(
+        (
+            await db.execute(
+                select(AuthUser.email)
+                .where(AuthUser.institution_id == institution_id)
+                .where(AuthUser.email.in_(wanted))
+            )
+        )
+        .scalars()
+        .all()
+    )
 
 
 # ─── Audit tail (tenant-scoped) ─────────────────────────────────────────────

@@ -1,3 +1,4 @@
+import { getAuthContext } from "@/lib/auth";
 import { ApiError, serverFetch } from "@/lib/api.server";
 import { createClient } from "@/lib/supabase/server";
 import type { LLMStatus, UserRole } from "@/lib/types";
@@ -7,16 +8,9 @@ import AskView from "./AskView";
 /** S2 — natural-language query interface (HoD / institution admin). */
 export default async function AskPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user, profile } = await getAuthContext();
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase
-    .from("auth_users")
-    .select("role, full_name")
-    .eq("id", user.id)
-    .single();
   const role = profile?.role as UserRole | undefined;
   if (role !== "hod" && role !== "institution_admin" && role !== "super_admin") {
     redirect("/");

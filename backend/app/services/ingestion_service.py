@@ -18,11 +18,12 @@ writing anything (no job row either).
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.engines.fslsm.scorer import score_responses
@@ -192,6 +193,128 @@ def _display_name(r: InternalResponse) -> str:
     return "Unnamed student"
 
 
+async def _persist_bulk(
+    db: AsyncSession,
+    *,
+    institution_id: UUID,
+    department_id: UUID | None,
+    inst: SurveyInstrument,
+    qmap: dict[int, UUID],
+    job: IngestionJob,
+    academic_term_id: UUID | None,
+    now: datetime,
+    version_cache: dict[UUID, int],
+    pending: list[tuple],
+) -> int:
+    """Write every pending response with a few bulk statements.
+
+    Rows reference each other by bare FK columns, so statements are issued in
+    dependency order: students -> responses -> answers/profiles/aux profiles.
+    Returns the number of aux profiles created. Raises on any DB error; the
+    caller rolls back the savepoint and falls back to the per-row path.
+    """
+    vc = dict(version_cache)  # only committed to version_cache on success
+
+    # Existing students: backfill department / email, as the row path does.
+    created_ids = {st.id for _, _, st, created in pending if created}
+    for r, _ref, st, _created in pending:
+        if department_id is not None and st.department_id is None:
+            st.department_id = department_id
+        if not st.email and r.email:
+            st.email = r.email.strip().lower()
+
+    student_rows = {}
+    for _r, _ref, st, _c in pending:
+        if st.id in created_ids and st.id not in student_rows:
+            student_rows[st.id] = dict(
+                id=st.id, institution_id=institution_id, department_id=st.department_id,
+                external_id=st.external_id, full_name=st.full_name, email=st.email,
+                created_at=st.created_at or now,
+            )
+
+    resp_rows, ans_rows, prof_rows, aux_rows = [], [], [], []
+    last_prof: dict[UUID, int] = {}
+    last_aux: dict[UUID, int] = {}
+    for r, _ref, st, _c in pending:
+        rid = uuid4()
+        resp_rows.append(dict(
+            id=rid, institution_id=institution_id, student_id=st.id,
+            instrument_id=inst.id, academic_term_id=academic_term_id,
+            submitted_at=r.submitted_at or now, source=r.source,
+            ingestion_job_id=job.id, external_response_id=r.external_response_id,
+            created_at=now,
+        ))
+        for qno, choice in r.answers.items():
+            ans_rows.append(dict(
+                response_id=rid, question_id=qmap[qno], choice=AnswerChoice(choice),
+            ))
+        score = score_responses(r.answers)  # type: ignore[arg-type]
+        dominant = score.dominant_axis()
+        vc[st.id] = vc.get(st.id, 0) + 1
+        prof_rows.append(dict(
+            id=uuid4(), institution_id=institution_id, student_id=st.id,
+            derived_from_response_id=rid, version=vc[st.id], is_current=False,
+            scored_at=now, scoring_engine_version=FSLSM_SCORER_VERSION,
+            active_reflective_score=score.active_reflective,
+            sensing_intuitive_score=score.sensing_intuitive,
+            visual_verbal_score=score.visual_verbal,
+            sequential_global_score=score.sequential_global,
+            dominant_axis=FslsmAxis(dominant.value) if dominant else None,
+        ))
+        last_prof[st.id] = len(prof_rows) - 1
+
+        collab = r.extra.get("collaboration_pref")
+        part = r.extra.get("participation_level")
+        if collab or part:
+            aux_rows.append(dict(
+                id=uuid4(), institution_id=institution_id, student_id=st.id,
+                academic_term_id=academic_term_id,
+                collaboration_pref=CollabPref(collab) if collab else None,
+                participation_level=ParticipationLevel(part) if part else None,
+                notes=r.extra.get("notes"), is_current=False, collected_at=now,
+            ))
+            last_aux[st.id] = len(aux_rows) - 1
+
+    # Within the batch only a student's newest profile is current.
+    for i in last_prof.values():
+        prof_rows[i]["is_current"] = True
+    for i in last_aux.values():
+        aux_rows[i]["is_current"] = True
+
+    student_ids = list({st.id for _, _, st, _ in pending})
+
+    if student_rows:
+        await db.execute(insert(Student), list(student_rows.values()))
+    await db.execute(insert(SurveyResponse), resp_rows)
+    await db.execute(insert(SurveyAnswer), ans_rows)
+    await db.execute(
+        update(StudentProfile)
+        .where(StudentProfile.student_id.in_(student_ids))
+        .where(StudentProfile.is_current.is_(True))
+        .values(is_current=False)
+        .execution_options(synchronize_session=False)
+    )
+    await db.execute(insert(StudentProfile), prof_rows)
+    if aux_rows:
+        aux_students = list(last_aux)
+        await db.execute(
+            update(StudentAuxProfile)
+            .where(StudentAuxProfile.student_id.in_(aux_students))
+            .where(StudentAuxProfile.is_current.is_(True))
+            .where(
+                (StudentAuxProfile.academic_term_id == academic_term_id)
+                if academic_term_id is not None
+                else StudentAuxProfile.academic_term_id.is_(None)
+            )
+            .values(is_current=False)
+            .execution_options(synchronize_session=False)
+        )
+        await db.execute(insert(StudentAuxProfile), aux_rows)
+
+    version_cache.update(vc)
+    return len(aux_rows)
+
+
 # ─── Pipeline ───────────────────────────────────────────────────────────────
 
 async def run_ingestion(
@@ -264,15 +387,153 @@ async def run_ingestion(
     if inst is not None:
         stmt = (
             select(SurveyResponse.external_response_id)
+            .where(SurveyResponse.institution_id == institution_id)
             .where(SurveyResponse.instrument_id == inst.id)
             .where(SurveyResponse.external_response_id.is_not(None))
         )
         existing_ext_ids = set((await db.execute(stmt)).scalars().all())
 
     roster = await _load_roster(db, institution_id)
-    version_cache: dict[UUID, int] = {}
+
+    # Highest profile version per student in this institution, in one query.
+    # Resolving it inside the response loop cost a round trip per student on
+    # the first import of a cohort. Scoping by institution rather than by an
+    # IN (...) over the roster keeps this to a single bind parameter. A student
+    # absent here (brand new, or never scored) has no profile, so their first
+    # version is 1.
+    version_cache: dict[UUID, int] = {
+        student_id: int(max_version or 0)
+        for student_id, max_version in (
+            await db.execute(
+                select(StudentProfile.student_id, func.max(StudentProfile.version))
+                .where(StudentProfile.institution_id == institution_id)
+                .group_by(StudentProfile.student_id)
+            )
+        ).all()
+    }
     seen_students: set[UUID] = set()
     unsaved_students: set[UUID] = set()
+
+    pending: list[tuple] = []
+
+    async def persist_one(r, ref, student, created_now):
+        """Slow, row-at-a-time path: one savepoint per response. Used only when
+        the bulk path fails, so a single bad row never sinks the batch."""
+        assert inst is not None and job is not None
+        try:
+            async with db.begin_nested():
+                # A student created earlier in this batch whose savepoint rolled
+                # back was expunged from the session — re-add until it lands.
+                # These models link by bare FK columns (no relationship()), so
+                # the ORM does not order inserts for us: flush parents first.
+                if created_now or student.id in unsaved_students:
+                    db.add(student)
+                    unsaved_students.add(student.id)
+                    await db.flush()
+                else:
+                    if department_id is not None and student.department_id is None:
+                        student.department_id = department_id
+                    if not student.email and r.email:
+                        student.email = r.email.strip().lower()
+
+                response = SurveyResponse(
+                    id=uuid4(),
+                    institution_id=institution_id,
+                    student_id=student.id,
+                    instrument_id=inst.id,
+                    academic_term_id=academic_term_id,
+                    submitted_at=r.submitted_at or now,
+                    source=r.source,
+                    ingestion_job_id=job.id,
+                    external_response_id=r.external_response_id,
+                    created_at=now,
+                )
+                db.add(response)
+                await db.flush()  # answers + profile reference the response
+                for qno, choice in r.answers.items():
+                    db.add(
+                        SurveyAnswer(
+                            response_id=response.id,
+                            question_id=qmap[qno],
+                            choice=AnswerChoice(choice),
+                        )
+                    )
+
+                score = score_responses(r.answers)  # type: ignore[arg-type]
+                dominant = score.dominant_axis()
+
+                version_cache[student.id] = version_cache.get(student.id, 0) + 1
+
+                await db.execute(
+                    update(StudentProfile)
+                    .where(StudentProfile.student_id == student.id)
+                    .where(StudentProfile.is_current.is_(True))
+                    .values(is_current=False)
+                )
+                db.add(
+                    StudentProfile(
+                        id=uuid4(),
+                        institution_id=institution_id,
+                        student_id=student.id,
+                        derived_from_response_id=response.id,
+                        version=version_cache[student.id],
+                        is_current=True,
+                        scored_at=now,
+                        scoring_engine_version=FSLSM_SCORER_VERSION,
+                        active_reflective_score=score.active_reflective,
+                        sensing_intuitive_score=score.sensing_intuitive,
+                        visual_verbal_score=score.visual_verbal,
+                        sequential_global_score=score.sequential_global,
+                        dominant_axis=FslsmAxis(dominant.value) if dominant else None,
+                    )
+                )
+
+                collab = r.extra.get("collaboration_pref")
+                part = r.extra.get("participation_level")
+                if collab or part:
+                    collab_enum = CollabPref(collab) if collab else None
+                    part_enum = ParticipationLevel(part) if part else None
+                    await db.execute(
+                        update(StudentAuxProfile)
+                        .where(StudentAuxProfile.student_id == student.id)
+                        .where(StudentAuxProfile.is_current.is_(True))
+                        .where(
+                            (StudentAuxProfile.academic_term_id == academic_term_id)
+                            if academic_term_id is not None
+                            else StudentAuxProfile.academic_term_id.is_(None)
+                        )
+                        .values(is_current=False)
+                    )
+                    db.add(
+                        StudentAuxProfile(
+                            id=uuid4(),
+                            institution_id=institution_id,
+                            student_id=student.id,
+                            academic_term_id=academic_term_id,
+                            collaboration_pref=collab_enum,
+                            participation_level=part_enum,
+                            notes=r.extra.get("notes"),
+                            is_current=True,
+                            collected_at=now,
+                        )
+                    )
+                    summary.aux_profiles_created += 1
+
+                await db.flush()
+        except Exception as exc:  # noqa: BLE001 — per-row tolerance
+            logging.getLogger(__name__).warning("ingestion row %s rejected: %r", ref, exc)
+            summary.responses_rejected += 1
+            # Report the driver's own message (e.g. the FK/unique violation),
+            # not SQLAlchemy's wrapper text.
+            cause = str(getattr(exc, "orig", None) or exc).strip().splitlines()
+            summary.errors.append(IngestionIssue(ref, "row", (cause[0] if cause else repr(exc))[:300]))
+            return
+
+        unsaved_students.discard(student.id)
+        existing_ext_ids.add(r.external_response_id)
+        summary.responses_ingested += 1
+        summary.profiles_created += 1
+
 
     # ── Per-response loop ───────────────────────────────────────────────
     for r in responses:
@@ -332,127 +593,37 @@ async def run_ingestion(
             continue
 
         if dry_run:
+            existing_ext_ids.add(r.external_response_id)
             summary.responses_ingested += 1
             summary.profiles_created += 1
             if r.extra.get("collaboration_pref") or r.extra.get("participation_level"):
                 summary.aux_profiles_created += 1
             continue
 
+        pending.append((r, ref, student, created_now))
+        existing_ext_ids.add(r.external_response_id)
+
+    # ── Persist ─────────────────────────────────────────────────────────
+    # Fast path: every valid row goes in through a handful of bulk statements
+    # (a round trip each) instead of ~10 round trips per response. If the bulk
+    # write fails, fall back to the per-row path to isolate the bad rows.
+    if pending:
         assert inst is not None and job is not None
         try:
             async with db.begin_nested():
-                # A student created earlier in this batch whose savepoint rolled
-                # back was expunged from the session — re-add until it lands.
-                if created_now or student.id in unsaved_students:
-                    db.add(student)
-                    unsaved_students.add(student.id)
-                else:
-                    if department_id is not None and student.department_id is None:
-                        student.department_id = department_id
-                    if not student.email and r.email:
-                        student.email = r.email.strip().lower()
-
-                response = SurveyResponse(
-                    id=uuid4(),
-                    institution_id=institution_id,
-                    student_id=student.id,
-                    instrument_id=inst.id,
-                    academic_term_id=academic_term_id,
-                    submitted_at=r.submitted_at or now,
-                    source=r.source,
-                    ingestion_job_id=job.id,
-                    external_response_id=r.external_response_id,
-                    created_at=now,
+                aux_n = await _persist_bulk(
+                    db, institution_id=institution_id, department_id=department_id,
+                    inst=inst, qmap=qmap, job=job, academic_term_id=academic_term_id,
+                    now=now, version_cache=version_cache, pending=pending,
                 )
-                db.add(response)
-                for qno, choice in r.answers.items():
-                    db.add(
-                        SurveyAnswer(
-                            response_id=response.id,
-                            question_id=qmap[qno],
-                            choice=AnswerChoice(choice),
-                        )
-                    )
-
-                score = score_responses(r.answers)  # type: ignore[arg-type]
-                dominant = score.dominant_axis()
-
-                if student.id not in version_cache:
-                    current_max = (
-                        await db.execute(
-                            select(func.coalesce(func.max(StudentProfile.version), 0)).where(
-                                StudentProfile.student_id == student.id
-                            )
-                        )
-                    ).scalar_one()
-                    version_cache[student.id] = int(current_max or 0)
-                version_cache[student.id] += 1
-
-                await db.execute(
-                    update(StudentProfile)
-                    .where(StudentProfile.student_id == student.id)
-                    .where(StudentProfile.is_current.is_(True))
-                    .values(is_current=False)
-                )
-                db.add(
-                    StudentProfile(
-                        id=uuid4(),
-                        institution_id=institution_id,
-                        student_id=student.id,
-                        derived_from_response_id=response.id,
-                        version=version_cache[student.id],
-                        is_current=True,
-                        scored_at=now,
-                        scoring_engine_version=FSLSM_SCORER_VERSION,
-                        active_reflective_score=score.active_reflective,
-                        sensing_intuitive_score=score.sensing_intuitive,
-                        visual_verbal_score=score.visual_verbal,
-                        sequential_global_score=score.sequential_global,
-                        dominant_axis=FslsmAxis(dominant.value) if dominant else None,
-                    )
-                )
-
-                collab = r.extra.get("collaboration_pref")
-                part = r.extra.get("participation_level")
-                if collab or part:
-                    collab_enum = CollabPref(collab) if collab else None
-                    part_enum = ParticipationLevel(part) if part else None
-                    await db.execute(
-                        update(StudentAuxProfile)
-                        .where(StudentAuxProfile.student_id == student.id)
-                        .where(StudentAuxProfile.is_current.is_(True))
-                        .where(
-                            (StudentAuxProfile.academic_term_id == academic_term_id)
-                            if academic_term_id is not None
-                            else StudentAuxProfile.academic_term_id.is_(None)
-                        )
-                        .values(is_current=False)
-                    )
-                    db.add(
-                        StudentAuxProfile(
-                            id=uuid4(),
-                            institution_id=institution_id,
-                            student_id=student.id,
-                            academic_term_id=academic_term_id,
-                            collaboration_pref=collab_enum,
-                            participation_level=part_enum,
-                            notes=r.extra.get("notes"),
-                            is_current=True,
-                            collected_at=now,
-                        )
-                    )
-                    summary.aux_profiles_created += 1
-
-                await db.flush()
-        except Exception as exc:  # noqa: BLE001 — per-row tolerance
-            summary.responses_rejected += 1
-            summary.errors.append(IngestionIssue(ref, "row", str(exc).splitlines()[0][:300]))
-            continue
-
-        unsaved_students.discard(student.id)
-        existing_ext_ids.add(r.external_response_id)
-        summary.responses_ingested += 1
-        summary.profiles_created += 1
+            summary.responses_ingested += len(pending)
+            summary.profiles_created += len(pending)
+            summary.aux_profiles_created += aux_n
+        except Exception as exc:  # noqa: BLE001
+            logging.getLogger(__name__).warning(
+                "bulk ingestion failed (%r); retrying row by row", exc)
+            for rec in pending:
+                await persist_one(*rec)
 
     # ── Finalise ────────────────────────────────────────────────────────
     if summary.responses_ingested == 0 and summary.responses_duplicate == 0:

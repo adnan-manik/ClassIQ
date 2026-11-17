@@ -42,15 +42,20 @@ export default async function SectionsPage() {
             )
           `,
     ),
+    // Newest first, so the grouping below can keep each section's latest
+    // result. Unordered, PostgREST returned the runs in no particular order
+    // and the card showed whichever one happened to come last.
     supabase
       .from("simulation_results")
       .select(
         `
             section_id, compatibility_score, predicted_outcome, social_graph_impact,
+            created_at,
             recommended:teachers!simulation_results_recommended_teacher_id_fkey(full_name)
           `,
       )
-      .not("section_id", "is", null),
+      .not("section_id", "is", null)
+      .order("created_at", { ascending: false }),
     // Option lists for the "New Section" / "Change teacher" forms.
     supabase.from("teachers").select("id, full_name").order("full_name"),
     supabase.from("courses").select("id, code, name").order("code"),
@@ -72,9 +77,15 @@ export default async function SectionsPage() {
     }
     studentsBySection.get(e.section_id)!.push(e);
   }
-  const simBySec = new Map(
-    (simResults ?? []).map((r) => [r.section_id, r]),
-  );
+  // First row wins, which with the newest-first ordering above is the latest
+  // result for that section.
+  type SimRow = NonNullable<typeof simResults>[number];
+  const simBySec = new Map<string, SimRow>();
+  for (const r of simResults ?? []) {
+    if (r.section_id && !simBySec.has(r.section_id)) {
+      simBySec.set(r.section_id, r);
+    }
+  }
 
   const cards = (sections ?? []).map((sec) => {
     type CT = { code: string; name: string };

@@ -5,6 +5,7 @@ Layering: routers/early_warning.py → this module → engines/early_warning.py 
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
@@ -88,6 +89,32 @@ async def latest_prediction(
         )
     ).first()
     return (row[0], row[1]) if row else (None, None)
+
+
+async def latest_predictions(
+    db: AsyncSession, section_ids: Sequence[UUID]
+) -> dict[UUID, tuple[PredictedOutcome, int]]:
+    """Latest (predicted_outcome, score) per section, in one query.
+
+    The overview lists every section in the institution; resolving this with
+    `latest_prediction` per row cost a round trip each.
+    """
+    ids = list(section_ids)
+    if not ids:
+        return {}
+    rows = (
+        await db.execute(
+            select(
+                SimulationResult.section_id,
+                SimulationResult.predicted_outcome,
+                SimulationResult.compatibility_score,
+            )
+            .where(SimulationResult.section_id.in_(ids))
+            .distinct(SimulationResult.section_id)
+            .order_by(SimulationResult.section_id, desc(SimulationResult.created_at))
+        )
+    ).all()
+    return {r[0]: (r[1], r[2]) for r in rows}
 
 
 async def roster_names(db: AsyncSession, section_id: UUID) -> dict[UUID, str]:
@@ -175,23 +202,30 @@ async def record_outcomes(
     """Upsert one row per (section, student, week). Caller commits."""
     roster = await roster_names(db, section.id)
     now = datetime.now(timezone.utc)
+
+    # Every existing row for this (section, week) in one query — a full class
+    # of entries used to cost one SELECT each. The section-level row has a
+    # NULL student_id, which is a perfectly good dict key.
+    existing: dict[UUID | None, SectionOutcome] = {
+        row.student_id: row
+        for row in (
+            await db.execute(
+                select(SectionOutcome)
+                .where(SectionOutcome.section_id == section.id)
+                .where(SectionOutcome.week_no == week_no)
+            )
+        )
+        .scalars()
+        .all()
+    }
+
     saved = 0
     for e in entries:
         if e.student_id is not None and e.student_id not in roster:
             raise EarlyWarningError("One of the students is not enrolled in this section")
         if e.attendance_pct is None and e.grade_pct is None and e.engagement_level is None:
             continue
-        stmt = (
-            select(SectionOutcome)
-            .where(SectionOutcome.section_id == section.id)
-            .where(SectionOutcome.week_no == week_no)
-            .where(
-                SectionOutcome.student_id == e.student_id
-                if e.student_id is not None
-                else SectionOutcome.student_id.is_(None)
-            )
-        )
-        row = (await db.execute(stmt)).scalar_one_or_none()
+        row = existing.get(e.student_id)
         if row is None:
             row = SectionOutcome(
                 id=uuid4(),
@@ -202,6 +236,9 @@ async def record_outcomes(
                 recorded_at=now,
             )
             db.add(row)
+            # A payload that names the same student twice must update one row,
+            # which is what the old per-entry SELECT did via autoflush.
+            existing[e.student_id] = row
         row.attendance_pct = e.attendance_pct
         row.grade_pct = e.grade_pct
         row.engagement_level = e.engagement_level
@@ -413,9 +450,11 @@ async def overview(db: AsyncSession, institution_id: UUID) -> EarlyWarningOvervi
         ).all()
     }
 
+    predictions = await latest_predictions(db, [sec.id for sec, _c, _t in sections])
+
     summaries: list[SectionWarningSummary] = []
     for sec, course, teacher_name in sections:
-        predicted, score = await latest_prediction(db, sec.id)
+        predicted, score = predictions.get(sec.id, (None, None))
         weeks, latest = week_stats.get(sec.id, (0, None))
         flags = open_by_section.get(sec.id, [])
         if sec.state.value not in ("active", "simulated") and not weeks and not flags:

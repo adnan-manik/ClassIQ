@@ -4,11 +4,14 @@ Run locally with:
     uvicorn app.main:app --reload --port 8000
 """
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.concurrency import run_in_threadpool
 
 from app.core.config import settings
-from app.core.security import _get_jwks  # noqa: F401 — pre-warm JWKS on import
+from app.db.session import warm_pool
 from app.routers import (
     admin_institutions,
     admin_system,
@@ -32,8 +35,21 @@ from app.routers import (
 )
 
 
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Pay the one-off connection / JWKS costs now instead of on the first
+    # user requests. Skipped under test, where there is no real DB or Auth.
+    if settings.APP_ENV.lower() != "test":
+        from app.core.security import _get_jwks
+
+        await warm_pool()
+        await run_in_threadpool(_get_jwks)
+    yield
+
+
 def create_app() -> FastAPI:
     app = FastAPI(
+        lifespan=lifespan,
         title="ClassIQ API",
         description=(
             "Classroom Intelligence Platform — backend for the AI-powered "
@@ -82,7 +98,3 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
-
-# Pre-warm the JWKS cache so the first authed request doesn't pay the
-# ~3-5s sync HTTP fetch cost.
-_get_jwks()

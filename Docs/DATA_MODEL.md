@@ -1,8 +1,8 @@
 # ClassIQ — Data Model & Database Schema
 
-**Status:** Draft v1 — 2026-05-11
+**Status:** Initial design with security/idempotency corrections on 2026-10-26. Executable SQL and migrations are authoritative; see [readiness review](PRODUCT_READINESS_REVIEW.md).
 **Owners:** Khubaib (backend/DB), Adnan (frontend), Muniba (design)
-**Master spec:** [project.md](../project.md)
+**Master spec:** [project.md](project.md)
 
 ---
 
@@ -34,7 +34,7 @@
 ## 3. Enum Types
 
 ```sql
-CREATE TYPE user_role         AS ENUM ('super_admin', 'hod', 'teacher');
+CREATE TYPE user_role         AS ENUM ('super_admin', 'institution_admin', 'hod', 'teacher', 'student');
 CREATE TYPE section_state     AS ENUM ('draft', 'simulated', 'active', 'archived');
 CREATE TYPE collab_pref       AS ENUM ('solo', 'pair', 'group');
 CREATE TYPE participation_lvl AS ENUM ('low', 'medium', 'high');
@@ -293,7 +293,7 @@ CREATE TABLE survey_responses (
   external_response_id TEXT,                                  -- the source app's own response ID, for idempotency
   created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
   deleted_at           TIMESTAMPTZ,
-  UNIQUE (instrument_id, external_response_id)               -- idempotent ingestion
+  UNIQUE (institution_id, instrument_id, external_response_id) -- tenant-scoped idempotency
 );
 CREATE INDEX idx_survey_responses_student ON survey_responses(student_id, submitted_at DESC);
 CREATE INDEX idx_survey_responses_inst    ON survey_responses(institution_id);
@@ -485,8 +485,9 @@ CREATE TABLE simulation_runs (
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
   CHECK ((scenario_id IS NOT NULL) OR (section_id IS NOT NULL))
 );
-CREATE INDEX idx_sim_runs_scenario ON simulation_runs(scenario_id);
+CREATE INDEX idx_sim_runs_scenario_recent ON simulation_runs(scenario_id, created_at DESC);
 CREATE INDEX idx_sim_runs_section  ON simulation_runs(section_id);
+CREATE INDEX idx_sim_runs_institution ON simulation_runs(institution_id);
 ```
 
 ### `simulation_results`
@@ -514,8 +515,8 @@ CREATE TABLE simulation_results (
   CHECK ((scenario_section_id IS NOT NULL) OR (section_id IS NOT NULL))
 );
 CREATE INDEX idx_sim_results_run            ON simulation_results(simulation_run_id);
-CREATE INDEX idx_sim_results_scenario_sec   ON simulation_results(scenario_section_id);
-CREATE INDEX idx_sim_results_section        ON simulation_results(section_id);
+CREATE INDEX idx_sim_results_scenario_sec_recent ON simulation_results(scenario_section_id, created_at DESC);
+CREATE INDEX idx_sim_results_section_recent      ON simulation_results(section_id, created_at DESC);
 ```
 
 ### `simulation_result_factors` — normalized factor breakdown
@@ -639,18 +640,18 @@ those no longer produced.
 
 ## 12. RLS Strategy
 
-All tenant-scoped tables enable RLS and use one helper function:
+Browser reads use RLS and these two helpers. Backend SQL uses a privileged connection and must enforce scope explicitly. The October security migration also revokes browser write grants and adds a restrictive active-staff read policy to all 29 application tables:
 
 ```sql
 CREATE OR REPLACE FUNCTION current_institution_id() RETURNS UUID
-LANGUAGE sql STABLE SECURITY DEFINER AS $$
-  SELECT institution_id FROM auth_users WHERE id = auth.uid();
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT institution_id FROM public.auth_users WHERE id = auth.uid() AND is_active = true;
 $$;
 
 -- Named get_current_role because current_role is a reserved word in Postgres.
 CREATE OR REPLACE FUNCTION get_current_role() RETURNS user_role
-LANGUAGE sql STABLE SECURITY DEFINER AS $$
-  SELECT role FROM auth_users WHERE id = auth.uid();
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT role FROM public.auth_users WHERE id = auth.uid() AND is_active = true;
 $$;
 ```
 
@@ -660,16 +661,16 @@ $$;
 ALTER TABLE <table_name> ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY tenant_isolation ON <table_name>
-  USING (institution_id = current_institution_id())
-  WITH CHECK (institution_id = current_institution_id());
+  FOR SELECT TO authenticated
+  USING (institution_id = current_institution_id());
 
 -- super_admin override
 CREATE POLICY super_admin_all ON <table_name>
-  USING (get_current_role() = 'super_admin')
-  WITH CHECK (get_current_role() = 'super_admin');
+  FOR SELECT TO authenticated
+  USING (get_current_role() = 'super_admin');
 ```
 
-**Teacher-narrower policies** apply on `sections`, `section_students`, `student_profiles`, etc., restricting reads to sections where `teacher_id = (SELECT id FROM teachers WHERE auth_user_id = auth.uid())`.
+**Pending launch blocker:** teacher-narrower read policies and HoD department scope are required but are not implemented by the tenant-only policies above. The teacher dashboard filters by assigned teacher; that is a UI query filter, not database authorization. Full tenant/department/assignment negative tests must precede external pilots.
 
 A full RLS policy catalogue with per-role read/write matrices belongs in a follow-up doc; this section establishes the pattern.
 
@@ -1053,3 +1054,4 @@ without a rebuild.
 | 2026-06-03 | `2026-06-03_drop_phd_pipeline_source.sql` | Removed `phd_pipeline` from the `response_source` enum; existing rows remapped to `form_app` (columns: `ingestion_jobs.source`, `survey_responses.source`). |
 | 2026-09-04 | `2026-09-04_seed_ils_instrument.sql` | Seeds the default FSLSM instrument (`FSLSM-ILS-Algorithms` v`27Jan24`) and its 44 questions with axis + RDF-property mapping. Generated from `backend/app/ingestion/ils_instrument.py`; the ingestion API also seeds these rows on first use. Idempotent. Applied to the shared project on 4 Sep 2026. |
 | 2026-09-04 | `2026-09-04_early_warning.sql` | S1: adds `warning_type` / `warning_severity` / `warning_status` enums and the `section_outcomes` + `early_warning_flags` tables with RLS (§11b). Idempotent. Applied to the shared project on 4 Sep 2026. |
+| 2026-11-07 | `2026-11-07_simulation_read_indexes.sql` | Index support for the batched dashboard reads: `(section_id, created_at DESC)` and `(scenario_section_id, created_at DESC)` on `simulation_results`, `(scenario_id, created_at DESC)` plus a new `institution_id` index on `simulation_runs`; drops the three single-column indexes those composites supersede. Idempotent. **Not yet applied to the shared project.** |

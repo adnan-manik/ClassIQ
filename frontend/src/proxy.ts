@@ -3,7 +3,15 @@ import { NextResponse, type NextRequest } from "next/server";
 
 const PUBLIC_PATHS = ["/login", "/auth"];
 
+/**
+ * Optimistic auth redirect. The proxy runs on every request, including route
+ * prefetches, so it only reads the session cookie — `updateSession` explains
+ * why, and the dashboard layout is what actually verifies the user.
+ */
 export async function proxy(request: NextRequest) {
+  const path = request.nextUrl.pathname;
+  const isPublic = PUBLIC_PATHS.some((p) => path.startsWith(p));
+
   // If Supabase env is missing, skip auth entirely (dev convenience).
   if (
     !process.env.NEXT_PUBLIC_SUPABASE_URL ||
@@ -12,17 +20,15 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const { response, user } = await updateSession(request);
-  const path = request.nextUrl.pathname;
-  const isPublic = PUBLIC_PATHS.some((p) => path.startsWith(p));
+  const { response, hasSession } = await updateSession(request);
 
   // Not signed in → push to /login (unless already on a public route).
-  if (!user && !isPublic) {
+  if (!hasSession && !isPublic) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
   // Already signed in but hitting /login → bounce to /.
-  if (user && path === "/login") {
+  if (hasSession && path === "/login") {
     return NextResponse.redirect(new URL("/", request.url));
   }
 

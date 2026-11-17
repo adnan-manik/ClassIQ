@@ -6,9 +6,7 @@
 # Next.js build output anywhere (incl. a stray root-level .next from running next at root)
 **/.next/
 
-# Ad-hoc tooling deps in db/ — script-only, not source code
-/db/package.json
-/db/package-lock.json
+# Database scripts and security tests have tracked dependency manifests.
 
 # Env files
 .env*

@@ -87,8 +87,8 @@ def _result_shape(bundle) -> SimulationResultShape | None:
     )
 
 
-async def _section_shape(db: AsyncSession, ss, course, teacher, t_profile) -> ScenarioSectionShape:
-    enrolled = await repo.list_scenario_section_students(db, ss.id)
+def _section_shape(ss, course, teacher, t_profile, enrolled, result) -> ScenarioSectionShape:
+    """Build one section's shape from already-fetched roster and result rows."""
     students = [
         StudentListItem(
             id=s.id,
@@ -108,17 +108,22 @@ async def _section_shape(db: AsyncSession, ss, course, teacher, t_profile) -> Sc
         label=ss.label,
         student_count=len(students),
         students=students,
-        latest_result=_result_shape(
-            await repo.latest_result_for_scenario_section(db, ss.id)
-        ),
+        latest_result=_result_shape(result),
     )
 
 
 async def _sections_with_results(
     db: AsyncSession, scenario_id: UUID
 ) -> list[ScenarioSectionShape]:
+    """A scenario's full section shapes in four queries, not three per section."""
     rows = await repo.list_scenario_sections(db, scenario_id)
-    return [await _section_shape(db, ss, c, t, tp) for (ss, c, t, tp) in rows]
+    ss_ids = [ss.id for ss, _c, _t, _tp in rows]
+    rosters = await repo.students_by_scenario_section(db, ss_ids)
+    results = await repo.latest_results_for_scenario_sections(db, ss_ids)
+    return [
+        _section_shape(ss, c, t, tp, rosters.get(ss.id, []), results.get(ss.id))
+        for (ss, c, t, tp) in rows
+    ]
 
 
 def _summary(sections: list[ScenarioSectionShape]) -> tuple[float | None, datetime | None]:
@@ -137,11 +142,15 @@ async def _last_simulated_at(db: AsyncSession, scenario_id: UUID) -> datetime | 
     return (await db.execute(stmt)).scalar_one_or_none()
 
 
-async def build_list_item(
-    db: AsyncSession, scenario: Scenario, term_name: str | None, section_count: int
+def _list_item(
+    scenario: Scenario,
+    term_name: str | None,
+    section_count: int,
+    avg_score: float | None,
+    last_simulated_at: datetime | None,
 ) -> ScenarioListItem:
-    sections = await _sections_with_results(db, scenario.id)
-    avg, _ = _summary(sections)
+    """The list row itself. Shared so the one-scenario and the batched paths
+    cannot drift apart."""
     return ScenarioListItem(
         id=scenario.id,
         name=scenario.name,
@@ -153,9 +162,52 @@ async def build_list_item(
         created_at=scenario.created_at,
         updated_at=scenario.updated_at,
         section_count=section_count,
-        avg_score=avg,
-        last_simulated_at=await _last_simulated_at(db, scenario.id),
+        avg_score=avg_score,
+        last_simulated_at=last_simulated_at,
     )
+
+
+async def build_list_item(
+    db: AsyncSession, scenario: Scenario, term_name: str | None, section_count: int
+) -> ScenarioListItem:
+    """One scenario's list row. For a whole list use `build_list_items`."""
+    sections = await _sections_with_results(db, scenario.id)
+    avg, _ = _summary(sections)
+    return _list_item(
+        scenario,
+        term_name,
+        section_count,
+        avg,
+        await _last_simulated_at(db, scenario.id),
+    )
+
+
+async def build_list_items(
+    db: AsyncSession, rows: list[tuple[Scenario, str | None, int]]
+) -> list[ScenarioListItem]:
+    """Every scenario's list row in two queries.
+
+    A list row shows only an average score and the last run time, so this does
+    not assemble the section shapes `build_detail` needs. Calling
+    `build_list_item` per scenario did, which cost three queries per scenario
+    section plus one per scenario — and it pulled every student roster purely
+    to average the scores.
+    """
+    if not rows:
+        return []
+    scenario_ids = [scenario.id for scenario, _term, _count in rows]
+    scores = await repo.latest_scores_by_scenario(db, scenario_ids)
+    last_runs = await repo.last_simulated_at_by_scenario(db, scenario_ids)
+    return [
+        _list_item(
+            scenario,
+            term_name,
+            section_count,
+            cmp.average(scores.get(scenario.id, [])),
+            last_runs.get(scenario.id),
+        )
+        for scenario, term_name, section_count in rows
+    ]
 
 
 async def build_detail(db: AsyncSession, scenario: Scenario) -> ScenarioDetail:
@@ -346,11 +398,29 @@ async def simulate_scenario(
         created_at=now,
     )
 
+    # The scoring config, the teacher candidates and every roster's profiles,
+    # aux rows and peer edges are loaded once for the run. Scoring a roster
+    # used to re-fetch all of that, so this was seven queries per section.
+    try:
+        context = await compat.load_scoring_context(db, institution_id)
+    except compat.SimulateError as exc:
+        raise ScenarioError(str(exc)) from exc
+
+    ids_by_section = await repo.student_ids_by_scenario_section(
+        db, [ss.id for ss, _c, _t, _tp in rows]
+    )
+    preload = await compat.load_roster_preload(
+        db,
+        institution_id=institution_id,
+        academic_term_id=scenario.academic_term_id,
+        student_ids=[sid for ids in ids_by_section.values() for sid in ids],
+    )
+
     skipped: list[str] = []
     results: list[tuple[SimulationResult, list]] = []
     config_id: UUID | None = None
     for ss, course, _teacher, _tp in rows:
-        student_ids = await repo.scenario_section_student_ids(db, ss.id)
+        student_ids = ids_by_section.get(ss.id, [])
         try:
             scored = await compat.score_roster(
                 db,
@@ -358,6 +428,8 @@ async def simulate_scenario(
                 academic_term_id=scenario.academic_term_id,
                 teacher_id=ss.teacher_id,
                 student_ids=student_ids,
+                context=context,
+                preload=preload,
             )
         except compat.SimulateError as exc:
             skipped.append(f"{course.code} {ss.label}: {exc}")
@@ -386,9 +458,11 @@ async def simulate_scenario(
     if skipped:
         run.error_message = "Skipped: " + "; ".join(skipped)
     db.add(run)
+    await db.flush()  # bare FK column, no relationship(): insert the run first
     for result, factors in results:
         db.add(result)
         db.add_all(factors)
+        await db.flush()  # likewise: a result before its factors
 
     scenario.status = ScenarioStatus.simulated
     scenario.scoring_config_id = config_id
@@ -434,12 +508,22 @@ async def compare_scenario(
     """Each scenario section next to the live section with the same
     (course, term, label) — score, per-factor deltas and roster changes."""
     rows = await repo.list_scenario_sections(db, scenario.id)
+    # Rosters and scenario-side results for the whole comparison up front; the
+    # baseline lookups below still run per section, since which live section
+    # pairs with which scenario section is only known inside the loop.
+    ss_ids = [ss.id for ss, _c, _t, _tp in rows]
+    rosters = await repo.students_by_scenario_section(db, ss_ids)
+    scen_results = await repo.latest_results_for_scenario_sections(db, ss_ids)
+
     out_rows: list[ScenarioCompareRow] = []
     base_scores: list[int] = []
     scen_scores: list[int] = []
 
     for ss, course, teacher, t_profile in rows:
-        scen_shape = await _section_shape(db, ss, course, teacher, t_profile)
+        scen_shape = _section_shape(
+            ss, course, teacher, t_profile,
+            rosters.get(ss.id, []), scen_results.get(ss.id),
+        )
         scen_ids = [s.id for s in scen_shape.students]
 
         baseline = await repo.baseline_section_for(
@@ -523,6 +607,8 @@ async def apply_scenario(
     """Copy every scenario section onto the live section with the same
     (course, term, label) — creating it if needed — then re-run the engine on
     each so the live result matches the scenario. The scenario becomes `applied`."""
+    # Serialize retries of the same apply request and re-read its current state.
+    await db.refresh(scenario, with_for_update=True)
     if scenario.status == ScenarioStatus.applied:
         raise ScenarioError("Scenario has already been applied")
     if scenario.status != ScenarioStatus.simulated:
@@ -535,22 +621,26 @@ async def apply_scenario(
     now = datetime.now(timezone.utc)
     applied: list[AppliedSectionShape] = []
     touched: list[UUID] = []
+    ids_by_section = await repo.student_ids_by_scenario_section(
+        db, [ss.id for ss, _c, _t, _tp in rows]
+    )
 
     for ss, course, _teacher, _tp in rows:
-        student_ids = await repo.scenario_section_student_ids(db, ss.id)
+        student_ids = ids_by_section.get(ss.id, [])
         baseline = await repo.baseline_section_for(
             db,
             institution_id=institution_id,
             academic_term_id=scenario.academic_term_id,
             course_id=course.id,
             label=ss.label,
+            lock=True,
         )
         created = False
         if baseline:
             section = baseline[0]
-            if section.state == SectionState.archived:
+            if section.state in (SectionState.active, SectionState.archived):
                 raise ScenarioError(
-                    f"Live section {course.code} {ss.label} is archived and cannot be changed"
+                    f"Live section {course.code} {ss.label} is {section.state.value} and cannot be changed"
                 )
             section.teacher_id = ss.teacher_id
             section.updated_at = now
@@ -616,9 +706,16 @@ async def apply_scenario(
         entity_id=scenario.id,
         payload={"sections": [str(s) for s in touched]},
     )
-    await db.commit()
+    # Re-score each live section so its persisted result reflects the applied
+    # roster. The config and teacher candidates are shared across the sections;
+    # each section's own roster is still read inside simulate_section, since
+    # reconciliation above may have changed it.
+    try:
+        context = await compat.load_scoring_context(db, institution_id)
+    except compat.SimulateError as exc:
+        await db.rollback()
+        raise ScenarioError(f"Could not apply scenario: {exc}") from exc
 
-    # Re-score each live section so its persisted result reflects the applied roster.
     for i, section_id in enumerate(touched):
         try:
             _run, result, _f = await compat.simulate_section(
@@ -626,13 +723,16 @@ async def apply_scenario(
                 institution_id=institution_id,
                 section_id=section_id,
                 triggered_by=user_id,
+                context=context,
             )
             applied[i] = applied[i].model_copy(
                 update={"compatibility_score": result.compatibility_score}
             )
-        except compat.SimulateError:
-            # Empty roster etc. — the section is applied but stays draft.
-            continue
+        except compat.SimulateError as exc:
+            await db.rollback()
+            raise ScenarioError(f"Could not apply scenario: {exc}") from exc
+
+    await db.commit()
 
     return ScenarioApplyResponse(
         scenario_id=scenario.id, status=scenario.status, applied=applied

@@ -25,5 +25,18 @@ python-multipart>=0.0.20,<1.0
 # Graph — social-cohesion factor in the scoring engine
 networkx>=3.4,<4.0
 
-# LLM — S2 natural-language query interface (Claude API, backend-only key)
+# LLM — S2 natural-language query interface (backend-only key).
+# Both providers ship; LLM_PROVIDER selects one at runtime.
 anthropic>=0.60
+groq>=0.11
+
+# Instructional-artifact analysis — FSLSM classifiers over teacher material.
+# The classifiers themselves are plain arrays scored with numpy (see
+# app/artifacts/model.py), so scikit-learn is deliberately NOT a runtime
+# dependency: sklearn 1.6.1, the version the models were pickled from, has no
+# wheel for Python 3.14 and fails to build from source.
+numpy>=2.0
+
+# The encoder is heavy (torch, ~2.5GB installed) and only the artifact pipeline
+# needs it — install it where that runs, not on an API-only deployment:
+#   pip install -r requirements-artifacts.txt

@@ -33,3 +33,9 @@ htmlcov/
 .idea/
 .vscode/
 *.swp
+
+# Extracted FSLSM classifier weights (app/artifacts/extract.py output).
+# Derived from Mubashir Yousuf's PhD models — kept out of the repo until the
+# licence for redistribution is agreed in writing. Regenerate locally with:
+#   python -m app.artifacts.extract <dir-with-pkl-files>
+app/artifacts/weights/
