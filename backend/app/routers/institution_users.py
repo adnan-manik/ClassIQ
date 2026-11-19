@@ -9,6 +9,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -94,13 +95,22 @@ async def create_user(
             id=uuid.uuid4(),
             institution_id=actor.institution_id,
             department_id=body.department_id,
-            external_id=body.external_id,
+            external_id=(body.external_id or "").strip() or None,
             full_name=body.full_name,
             email=str(body.email),
+            program=(body.program or "").strip() or None,
+            batch=(body.batch or "").strip() or None,
+            current_semester=body.current_semester,
             created_at=datetime.now(timezone.utc),
         )
         db.add(student)
-        await db.flush()
+        try:
+            await db.flush()
+        except IntegrityError as exc:
+            await db.rollback()
+            raise HTTPException(
+                409, f"Student ID {student.external_id} already exists"
+            ) from exc
         await write_audit(
             db,
             institution_id=actor.institution_id,
@@ -108,7 +118,15 @@ async def create_user(
             action="user.create",
             entity_type="student",
             entity_id=student.id,
-            payload={"email": str(body.email), "role": "student", "external_id": body.external_id},
+            payload={
+                "email": str(body.email),
+                "role": "student",
+                "external_id": student.external_id,
+                "department_id": str(body.department_id) if body.department_id else None,
+                "program": student.program,
+                "batch": student.batch,
+                "current_semester": student.current_semester,
+            },
         )
         await db.commit()
         return UserListItem(

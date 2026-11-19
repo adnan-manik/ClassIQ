@@ -38,7 +38,7 @@ export default function Modal({
 
       {/* Modal */}
       <div
-        className={`relative bg-white rounded-3xl shadow-lg p-6 md:p-8 w-full mx-4 ${sizeClass}`}
+        className={`relative bg-white rounded-3xl shadow-lg p-6 md:p-8 w-full mx-4 max-h-[90vh] overflow-y-auto ${sizeClass}`}
         style={{ border: `1px solid ${BRAND.cardBorder}` }}
         role="dialog"
         aria-modal="true"
