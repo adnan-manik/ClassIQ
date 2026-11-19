@@ -69,6 +69,16 @@ export interface Student {
   external_id: string | null;
   full_name: string;
   email: string | null;
+  program: string | null;
+  batch: string | null;
+  current_semester: number | null;
+}
+
+/** Minimal department shape for pickers and labels. */
+export interface DepartmentOption {
+  id: string;
+  code: string;
+  name: string;
 }
 
 export interface StudentProfile {

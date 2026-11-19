@@ -164,14 +164,20 @@ CREATE TABLE students (
   external_id           TEXT,
   full_name             TEXT NOT NULL,
   email                 TEXT,
+  program               TEXT,
+  batch                 TEXT,
+  current_semester      SMALLINT,
   linked_auth_user_id   UUID REFERENCES auth_users(id) ON DELETE SET NULL,
   created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at            TIMESTAMPTZ,
   deleted_at            TIMESTAMPTZ,
-  UNIQUE (institution_id, external_id)
+  UNIQUE (institution_id, external_id),
+  CONSTRAINT students_current_semester_range
+    CHECK (current_semester IS NULL OR current_semester BETWEEN 1 AND 12)
 );
 CREATE INDEX idx_students_institution ON students(institution_id);
 CREATE INDEX idx_students_department  ON students(department_id);
+CREATE INDEX idx_students_program     ON students(institution_id, program);
 CREATE INDEX idx_students_email       ON students(email) WHERE email IS NOT NULL;
 
 CREATE TABLE teachers (

@@ -9,11 +9,30 @@ import ProfileHistory from "@/components/ProfileHistory";
 import { BRAND } from "@/lib/brand";
 import {
   FSLSM_AXES,
+  type DepartmentOption,
   type FslsmAxis,
   type StudentWithProfile,
 } from "@/lib/types";
 import { ArrowLeft, Plus, Search, Users, X } from "lucide-react";
 import { useMemo, useState } from "react";
+
+/** "BSCS · Spring 2026 · Sem 3" — whichever parts are set. */
+function academicSummary(s: Row, short = false): string | null {
+  const parts = [
+    s.program,
+    s.batch,
+    s.current_semester != null
+      ? short
+        ? `Sem ${s.current_semester}`
+        : `Semester ${s.current_semester}`
+      : null,
+  ].filter(Boolean);
+  return parts.length ? parts.join(" · ") : null;
+}
+
+function distinctSorted(values: (string | null)[]): string[] {
+  return [...new Set(values.filter((v): v is string => !!v))].sort();
+}
 
 // Map participation level → an "engagement" percentage for the student card.
 // Real performance metrics will come from S1 (early-warning system).
@@ -44,10 +63,54 @@ type Row = StudentWithProfile & {
   } | null;
 };
 
-export default function StudentsView({ students }: { students: Row[] }) {
+export default function StudentsView({
+  students,
+  departments,
+  creatableDepartments,
+  canCreate,
+  restrictedToAssigned,
+}: {
+  students: Row[];
+  departments: DepartmentOption[];
+  creatableDepartments: DepartmentOption[];
+  canCreate: boolean;
+  restrictedToAssigned: boolean;
+}) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
+
+  const deptById = useMemo(
+    () => new Map(departments.map((d) => [d.id, d])),
+    [departments],
+  );
+
+  const createModal = canCreate && (
+    <CreateStudentModal
+      isOpen={showCreateModal}
+      onClose={() => setShowCreateModal(false)}
+      onSuccess={() => {
+        setShowCreateModal(false);
+        window.location.reload();
+      }}
+      departments={creatableDepartments}
+      restrictedToAssigned={restrictedToAssigned}
+      programSuggestions={distinctSorted(students.map((s) => s.program))}
+      batchSuggestions={distinctSorted(students.map((s) => s.batch))}
+    />
+  );
+
+  const createButton = canCreate && (
+    <button
+      type="button"
+      className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-white whitespace-nowrap ml-4 shrink-0"
+      style={{ backgroundColor: BRAND.teal }}
+      onClick={() => setShowCreateModal(true)}
+    >
+      <Plus size={18} />
+      Create Student
+    </button>
+  );
 
   // ─── Learning Style Overview data ──────────────────────────────────────
   const axisCounts: Record<FslsmAxis, number> = {
@@ -110,10 +173,9 @@ export default function StudentsView({ students }: { students: Row[] }) {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return students;
-    return students.filter(
-      (s) =>
-        s.full_name.toLowerCase().includes(q) ||
-        (s.external_id ?? "").toLowerCase().includes(q),
+    return students.filter((s) =>
+      [s.full_name, s.external_id, s.program, s.batch]
+        .some((v) => (v ?? "").toLowerCase().includes(q)),
     );
   }, [search, students]);
 
@@ -140,16 +202,9 @@ export default function StudentsView({ students }: { students: Row[] }) {
               Each student carries a versioned FSLSM behavioral profile.
             </p>
           </div>
-          <button
-            type="button"
-            className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-white whitespace-nowrap ml-4"
-            style={{ backgroundColor: BRAND.teal }}
-            onClick={() => setShowCreateModal(true)}
-          >
-            <Plus size={18} />
-            Create Student
-          </button>
+          {createButton}
         </div>
+        {createModal}
         <div className="mt-8">
           <EmptyState
             icon={Users}
@@ -163,15 +218,7 @@ export default function StudentsView({ students }: { students: Row[] }) {
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6">
-      <CreateStudentModal
-        isOpen={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
-        onSuccess={() => {
-          setShowCreateModal(false);
-          // Optionally refresh the page or re-fetch data
-          window.location.reload();
-        }}
-      />
+      {createModal}
 
       {/* ── Header ──────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between">
@@ -190,15 +237,7 @@ export default function StudentsView({ students }: { students: Row[] }) {
             their full profile.
           </p>
         </div>
-        <button
-          type="button"
-          className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-white whitespace-nowrap ml-4 shrink-0"
-          style={{ backgroundColor: BRAND.teal }}
-          onClick={() => setShowCreateModal(true)}
-        >
-          <Plus size={18} />
-          Create Student
-        </button>
+        {createButton}
       </div>
 
       {/* ── Learning Style Overview ─────────────────────────────────── */}
@@ -246,6 +285,11 @@ export default function StudentsView({ students }: { students: Row[] }) {
       ) : (
         <StudentDetail
           student={selected}
+          department={
+            selected.department_id
+              ? deptById.get(selected.department_id) ?? null
+              : null
+          }
           onBack={() => setSelectedId(null)}
         />
       )}
@@ -374,6 +418,14 @@ function StudentCard({
           >
             {student.external_id ?? "—"}
           </div>
+          {academicSummary(student, true) && (
+            <div
+              className="text-[10px] truncate"
+              style={{ color: "rgba(255,255,255,0.85)" }}
+            >
+              {academicSummary(student, true)}
+            </div>
+          )}
         </div>
       </div>
 
@@ -427,11 +479,29 @@ function StudentCard({
 // ─── Student detail (shown when a card is clicked) ───────────────────────
 function StudentDetail({
   student,
+  department,
   onBack,
 }: {
   student: Row;
+  department: DepartmentOption | null;
   onBack: () => void;
 }) {
+  const academicFacts: { label: string; value: string }[] = [
+    {
+      label: "Department",
+      value: department ? `${department.code} · ${department.name}` : "—",
+    },
+    { label: "Program", value: student.program ?? "—" },
+    { label: "Batch / Intake", value: student.batch ?? "—" },
+    {
+      label: "Current Semester",
+      value:
+        student.current_semester != null
+          ? `Semester ${student.current_semester}`
+          : "—",
+    },
+  ];
+
   return (
     <div className="space-y-4">
       {/* Back button */}
@@ -501,6 +571,27 @@ function StudentDetail({
           {student.profile?.dominant_axis && (
             <Badge text={student.profile.dominant_axis} />
           )}
+        </div>
+
+        {/* Academic placement */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {academicFacts.map((f) => (
+            <div
+              key={f.label}
+              className="rounded-xl p-3"
+              style={{ backgroundColor: BRAND.subtleBg }}
+            >
+              <div className="text-xs" style={{ color: BRAND.textMuted }}>
+                {f.label}
+              </div>
+              <div
+                className="text-sm font-semibold mt-1 break-words"
+                style={{ color: BRAND.text }}
+              >
+                {f.value}
+              </div>
+            </div>
+          ))}
         </div>
 
         {/* FSLSM scores */}

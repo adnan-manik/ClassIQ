@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str | None = None
     ANTHROPIC_MODEL: str = "claude-opus-5"
     GROQ_API_KEY: str | None = None
-    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    GROQ_MODEL: str = "openai/gpt-oss-120b"
     LLM_MAX_OUTPUT_TOKENS: int = 4096
     LLM_EFFORT: str = "medium"  # low | medium | high | xhigh | max (Anthropic only)
     LLM_TIMEOUT_SECONDS: int = 120

@@ -240,7 +240,7 @@ selected provider's key, always backend-side — never in the frontend, where a
 
 | `LLM_PROVIDER` | Key | Model var | Default |
 |----------------|-----|-----------|---------|
-| `groq`      | `GROQ_API_KEY`      | `GROQ_MODEL`      | `llama-3.3-70b-versatile` |
+| `groq`      | `GROQ_API_KEY`      | `GROQ_MODEL`      | `openai/gpt-oss-120b` |
 | `anthropic` | `ANTHROPIC_API_KEY` | `ANTHROPIC_MODEL` | `claude-opus-5` |
 
 `LLM_MAX_OUTPUT_TOKENS` caps each answer on both. `LLM_EFFORT` is Anthropic-only.
