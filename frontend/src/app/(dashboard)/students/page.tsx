@@ -31,7 +31,7 @@ export default async function StudentsPage() {
         .order("full_name"),
       supabase
         .from("departments")
-        .select("id, code, name")
+        .select("id, code, name, institution_id")
         .is("deleted_at", null)
         .order("code"),
       // An HoD may only create students in departments they're assigned to.
@@ -47,13 +47,25 @@ export default async function StudentsPage() {
     console.error("students page: failed to load students", studentsError);
   }
 
-  const allDepartments: DepartmentOption[] = departments ?? [];
+  // Every department RLS lets us see — used only to label existing students.
+  // A super_admin can see other institutions' departments here.
+  const allDepartments: DepartmentOption[] = (departments ?? []).map(
+    ({ id, code, name }) => ({ id, code, name }),
+  );
+
+  // The create endpoint always writes into the caller's own institution and
+  // rejects departments from any other, so only offer those.
+  const ownDepartments: DepartmentOption[] = (departments ?? [])
+    .filter((d) => me?.institution_id && d.institution_id === me.institution_id)
+    .map(({ id, code, name }) => ({ id, code, name }));
+
+  // An HoD is further limited to the departments they're assigned to.
   const creatableDepartments =
     hodDepts && "data" in hodDepts
-      ? allDepartments.filter((d) =>
+      ? ownDepartments.filter((d) =>
           (hodDepts.data ?? []).some((ud) => ud.department_id === d.id),
         )
-      : allDepartments;
+      : ownDepartments;
 
   // Flatten: pick the is_current profile (and aux) per student
   const rows: (StudentWithProfile & {
