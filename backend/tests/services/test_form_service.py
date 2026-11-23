@@ -17,7 +17,7 @@ from pydantic import ValidationError
 from app.ingestion import ils_instrument
 from app.models.student import Student
 from app.models.survey_form import SurveyForm, SurveyFormStatus
-from app.schemas.forms import ExtraQuestion, FormCreate, Identity, PeerPick
+from app.schemas.forms import ExtraQuestion, FormCreate, Identity, PeerPick, PublicSubmission
 from app.services import form_service as svc
 
 
@@ -234,3 +234,65 @@ def test_standard_wording_needs_the_licensed_file(tmp_path, monkeypatch):
         assert ils_instrument.standard_stems() is None
     finally:
         ils_instrument.standard_stems.cache_clear()
+
+
+# ─── Review follow-ups ───────────────────────────────────────────────────────
+
+def _submission(**kw) -> PublicSubmission:
+    base = dict(external_id="SP23-001", email="ada@uni.edu",
+                answers={q: "A" for q in range(1, 45)},
+                collaboration_pref="group", participation_level="medium")
+    base.update(kw)
+    return PublicSubmission(**base)
+
+
+@pytest.mark.parametrize("missing", ["collaboration_pref", "participation_level"])
+async def test_collected_profile_fields_are_required(missing, monkeypatch):
+    form = make_form(collect_peers=False)
+    monkeypatch.setattr(
+        svc, "resolve_identity", AsyncMock(return_value=svc._Resolved(student(), False))
+    )
+    db = AsyncMock()
+    with pytest.raises(svc.SubmissionError):
+        await svc.submit(db, form, _submission(**{missing: None}))
+    db.add.assert_not_called()
+
+
+async def test_profile_fields_not_required_when_the_form_skips_them(monkeypatch):
+    form = make_form(collect_peers=False, collect_collaboration=False, include_ils=False,
+                     collect_participation=False, extra_questions=[])
+    monkeypatch.setattr(
+        svc, "resolve_identity", AsyncMock(return_value=svc._Resolved(student(), False))
+    )
+    monkeypatch.setattr(svc, "_has_live_submission", AsyncMock(return_value=True))
+    # Gets past field validation to the duplicate check, which is all we need.
+    with pytest.raises(svc.AlreadySubmitted):
+        await svc.submit(AsyncMock(), form, _submission(
+            answers={}, collaboration_pref=None, participation_level=None))
+
+
+OPTIONS = make_form().peer_options
+
+
+def test_edges_from_picks_keeps_the_strongest_and_skips_unknown_options():
+    a = uuid4()
+    edges = svc.edges_from_picks(OPTIONS, [
+        {"student_id": str(a), "option": "friend"},
+        {"student_id": str(a), "option": "lab"},
+        {"student_id": str(a), "option": "removed-option"},
+    ])
+    assert edges == {(str(a), "friend"): {"strength": 5, "label": "Lab partner"}}
+
+
+def test_voiding_hands_shared_edges_to_the_newest_other_submission():
+    a, b = str(uuid4()), str(uuid4())
+    older, newest = uuid4(), uuid4()
+    others = [
+        (newest, svc.edges_from_picks(OPTIONS, [{"student_id": a, "option": "friend"}])),
+        (older, svc.edges_from_picks(OPTIONS, [{"student_id": a, "option": "lab"},
+                                               {"student_id": b, "option": "avoid"}])),
+    ]
+    plan = svc.plan_void_edges([(a, "friend"), (b, "conflict"), (b, "friend")], others)
+    assert plan[(a, "friend")] == (newest, {"strength": 4, "label": "Friend"})
+    assert plan[(b, "conflict")] == (older, {"strength": 3, "label": "Avoid"})
+    assert plan[(b, "friend")] is None  # nothing else asserts it → deleted

@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -390,6 +390,77 @@ async def _restore_latest(db: AsyncSession, model, student_id: UUID, extra_filte
         latest.is_current = True
 
 
+EdgeKey = tuple[str, str]  # (to_student_id as text, base relationship type)
+
+
+def edges_from_picks(peer_options: list[dict], picks: list) -> dict[EdgeKey, dict[str, Any]]:
+    """The edges a stored submission asserts: (classmate, base type) → the
+    strongest {strength, label} picked for it. Options no longer on the form
+    are skipped."""
+    options = {o["key"]: o for o in peer_options or []}
+    out: dict[EdgeKey, dict[str, Any]] = {}
+    for p in picks or []:
+        student_id = p["student_id"] if isinstance(p, dict) else p.student_id
+        opt = options.get(p["option"] if isinstance(p, dict) else p.option)
+        if opt is None:
+            continue
+        key = (str(student_id), opt["base_type"])
+        current = out.get(key)
+        if current is None or opt["strength"] > current["strength"]:
+            out[key] = {"strength": opt["strength"], "label": opt["label"]}
+    return out
+
+
+def plan_void_edges(
+    edge_keys: list[EdgeKey], others: list[tuple[UUID, dict[EdgeKey, dict[str, Any]]]]
+) -> dict[EdgeKey, tuple[UUID, dict[str, Any]] | None]:
+    """For each edge a voided submission owned: the newest other live
+    submission that also asserts it (`others` is newest first), or None when
+    nothing else does and the edge should be deleted."""
+    return {
+        key: next(((sid, edges[key]) for sid, edges in others if key in edges), None)
+        for key in edge_keys
+    }
+
+
+async def _release_peer_edges(db: AsyncSession, sub: SurveyFormSubmission, now: datetime) -> None:
+    """Edges are unique per (term, from, to, type), so a later form's answer
+    takes over an earlier one's row. Voiding must not delete a row another live
+    submission of the same student still asserts: hand it back instead."""
+    owned = list(
+        (
+            await db.execute(
+                select(PeerRelationship)
+                .where(PeerRelationship.form_submission_id == sub.id)
+                .where(PeerRelationship.deleted_at.is_(None))
+            )
+        ).scalars().all()
+    )
+    if not owned:
+        return
+    rows = (
+        await db.execute(
+            select(SurveyFormSubmission.id, SurveyFormSubmission.peers, SurveyForm.peer_options)
+            .join(SurveyForm, SurveyForm.id == SurveyFormSubmission.form_id)
+            .where(SurveyFormSubmission.student_id == sub.student_id)
+            .where(SurveyFormSubmission.id != sub.id)
+            .where(SurveyFormSubmission.voided_at.is_(None))
+            .where(SurveyForm.academic_term_id == owned[0].academic_term_id)
+            .order_by(SurveyFormSubmission.submitted_at.desc())
+        )
+    ).all()
+    others = [(sid, edges_from_picks(options, peers)) for sid, peers, options in rows]
+    plan = plan_void_edges([(str(e.to_student_id), e.type.value) for e in owned], others)
+    for edge in owned:
+        keeper = plan[(str(edge.to_student_id), edge.type.value)]
+        if keeper is None:
+            edge.deleted_at = now
+        else:
+            edge.form_submission_id, info = keeper
+            edge.strength = info["strength"]
+            edge.label = info["label"]
+
+
 async def void_submission(
     db: AsyncSession, *, form: SurveyForm, submission_id: UUID, user_id: UUID
 ) -> SurveyFormSubmission:
@@ -409,12 +480,7 @@ async def void_submission(
     sub.voided_at = now
     sub.voided_by = user_id
 
-    await db.execute(
-        update(PeerRelationship)
-        .where(PeerRelationship.form_submission_id == sub.id)
-        .where(PeerRelationship.deleted_at.is_(None))
-        .values(deleted_at=now)
-    )
+    await _release_peer_edges(db, sub, now)
     if sub.student_profile_id:
         profile = await db.get(StudentProfile, sub.student_profile_id)
         if profile is not None and profile.deleted_at is None:
@@ -693,6 +759,12 @@ async def submit(db: AsyncSession, form: SurveyForm, body: PublicSubmission) -> 
             raise SubmissionError(f"Answer all 44 learning-style questions ({len(missing)} left)")
     elif body.answers:
         raise SubmissionError("This survey has no learning-style questions")
+    # The student page requires these when the form collects them; a direct
+    # POST must not be able to skip them either.
+    if form.collect_collaboration and body.collaboration_pref is None:
+        raise SubmissionError("Please say how you prefer to work (on your own, with a partner or in a group)")
+    if form.collect_participation and body.participation_level is None:
+        raise SubmissionError("Please say how much you usually take part in class")
     collab = body.collaboration_pref if form.collect_collaboration else None
     part = body.participation_level if form.collect_participation else None
     extra = validate_extra_answers(list(form.extra_questions or []), body.extra_answers)
