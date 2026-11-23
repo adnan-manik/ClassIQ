@@ -1,5 +1,6 @@
 "use client";
 
+import MarkdownMessage from "@/components/MarkdownMessage";
 import { askClassIQ } from "@/lib/api";
 import { BRAND } from "@/lib/brand";
 import type { ChatTurn, LLMQueryResponse, LLMStatus } from "@/lib/types";
@@ -158,13 +159,19 @@ export default function AskView({
                   </div>
                 )}
                 <div
-                  className="max-w-[80%] rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap"
+                  className={`max-w-[80%] min-w-0 rounded-2xl px-4 py-3 text-sm ${
+                    m.role === "assistant" && !m.error ? "" : "whitespace-pre-wrap"
+                  }`}
                   style={{
                     backgroundColor: m.role === "user" ? BRAND.teal : m.error ? "#FEE2E2" : BRAND.subtleBg,
                     color: m.role === "user" ? "white" : m.error ? "#991B1B" : BRAND.text,
                   }}
                 >
-                  {m.content}
+                  {m.role === "assistant" && !m.error ? (
+                    <MarkdownMessage content={m.content} />
+                  ) : (
+                    m.content
+                  )}
                   {m.meta && (
                     <div className="text-[10px] mt-2 pt-2 flex gap-2 flex-wrap" style={{ color: BRAND.textSubtle, borderTop: `1px solid ${BRAND.cardBorder}` }}>
                       <span>{m.meta.model}</span>

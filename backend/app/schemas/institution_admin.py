@@ -69,6 +69,10 @@ class UserCreate(APIModel):
     role: UserRole  # validated: must not be super_admin
     external_id: str | None = None  # Student ID
     department_id: UUID | None = None
+    # Student-only academic placement (ignored for other roles).
+    program: str | None = Field(default=None, max_length=80)
+    batch: str | None = Field(default=None, max_length=40)
+    current_semester: int | None = Field(default=None, ge=1, le=12)
     mode: str = Field(default="invite", pattern=r"^(invite|password)$")
     password: str | None = Field(default=None, min_length=8)
 

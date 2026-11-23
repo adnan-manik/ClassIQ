@@ -14,6 +14,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Integer,
+    SmallInteger,
     String,
     UniqueConstraint,
 )
@@ -57,6 +58,9 @@ class Student(Base):
     external_id: Mapped[str | None] = mapped_column(String)
     full_name: Mapped[str] = mapped_column(String, nullable=False)
     email: Mapped[str | None] = mapped_column(String)
+    program: Mapped[str | None] = mapped_column(String)
+    batch: Mapped[str | None] = mapped_column(String)
+    current_semester: Mapped[int | None] = mapped_column(SmallInteger)
     linked_auth_user_id: Mapped[uuid.UUID | None] = mapped_column(PG_UUID)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
