@@ -2,6 +2,7 @@
 
 import Badge from "@/components/Badge";
 import EmptyState from "@/components/EmptyState";
+import Select, { type SelectOption } from "@/components/Select";
 import ScoreRing from "@/components/ScoreRing";
 import {
   cloneScenarioFromSection,
@@ -617,25 +618,18 @@ export default function SectionsView({
                       >
                         Reassign to
                       </div>
-                      <select
-                        defaultValue={selected.teacherId ?? ""}
+                      <Select
+                        value={selected.teacherId ?? ""}
                         disabled={savingTeacher}
-                        onChange={(e) =>
-                          handleChangeTeacher(selected.id, e.target.value)
-                        }
-                        className="w-full px-3 py-2 rounded-lg text-sm outline-none bg-white"
-                        style={{
-                          border: `1px solid ${BRAND.inputBorder}`,
-                          color: BRAND.text,
-                        }}
-                      >
-                        <option value="">— Unassigned —</option>
-                        {teachers.map((t) => (
-                          <option key={t.id} value={t.id}>
-                            {t.full_name}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(v) => handleChangeTeacher(selected.id, v)}
+                        options={[
+                          { value: "", label: "— Unassigned —" },
+                          ...teachers.map((t) => ({
+                            value: t.id,
+                            label: t.full_name,
+                          })),
+                        ]}
+                      />
                     </label>
                     <button
                       type="button"
@@ -959,22 +953,25 @@ function NewSectionModal({
           </p>
         ) : (
           <div className="space-y-3">
-            <SelectField label="Course" value={courseId} onChange={setCourseId}>
-              {courses.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.code} · {c.name}
-                </option>
-              ))}
-            </SelectField>
+            <SelectField
+              label="Course"
+              value={courseId}
+              onChange={setCourseId}
+              options={courses.map((c) => ({
+                value: c.id,
+                label: `${c.code} · ${c.name}`,
+              }))}
+            />
 
-            <SelectField label="Academic term" value={termId} onChange={setTermId}>
-              {terms.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                  {t.is_active ? " (active)" : ""}
-                </option>
-              ))}
-            </SelectField>
+            <SelectField
+              label="Academic term"
+              value={termId}
+              onChange={setTermId}
+              options={terms.map((t) => ({
+                value: t.id,
+                label: `${t.name}${t.is_active ? " (active)" : ""}`,
+              }))}
+            />
 
             <label className="block">
               <div
@@ -999,14 +996,11 @@ function NewSectionModal({
               label="Teacher (optional)"
               value={teacherId}
               onChange={setTeacherId}
-            >
-              <option value="">— Unassigned —</option>
-              {teachers.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.full_name}
-                </option>
-              ))}
-            </SelectField>
+              options={[
+                { value: "", label: "— Unassigned —" },
+                ...teachers.map((t) => ({ value: t.id, label: t.full_name })),
+              ]}
+            />
 
             <div>
               <div
@@ -1093,12 +1087,12 @@ function SelectField({
   label,
   value,
   onChange,
-  children,
+  options,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
-  children: React.ReactNode;
+  options: SelectOption[];
 }) {
   return (
     <label className="block">
@@ -1108,17 +1102,7 @@ function SelectField({
       >
         {label}
       </div>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full px-3 py-2 rounded-lg text-sm outline-none bg-white"
-        style={{
-          border: `1px solid ${BRAND.inputBorder}`,
-          color: BRAND.text,
-        }}
-      >
-        {children}
-      </select>
+      <Select value={value} onChange={onChange} options={options} />
     </label>
   );
 }

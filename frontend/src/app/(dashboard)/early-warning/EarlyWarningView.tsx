@@ -1,5 +1,6 @@
 "use client";
 
+import Select from "@/components/Select";
 import Badge from "@/components/Badge";
 import EmptyState from "@/components/EmptyState";
 import OutcomeEntry from "@/components/OutcomeEntry";
@@ -256,30 +257,33 @@ export default function EarlyWarningView({
             Flags ({visible.length})
           </h2>
           <div className="flex items-center gap-2 flex-wrap">
-            <select
+            <Select
+              size="sm"
+              aria-label="Filter by status"
+              className="min-w-[140px]"
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as WarningStatus | "all")}
-              className="px-3 py-1.5 rounded-lg text-sm outline-none bg-white"
-              style={{ border: `1px solid ${BRAND.inputBorder}`, color: BRAND.text }}
-            >
-              <option value="open">Open</option>
-              <option value="acknowledged">Acknowledged</option>
-              <option value="resolved">Resolved</option>
-              <option value="all">All</option>
-            </select>
-            <select
+              onChange={(v) => setStatusFilter(v as WarningStatus | "all")}
+              options={[
+                { value: "open", label: "Open" },
+                { value: "acknowledged", label: "Acknowledged" },
+                { value: "resolved", label: "Resolved" },
+                { value: "all", label: "All" },
+              ]}
+            />
+            <Select
+              size="sm"
+              aria-label="Filter by section"
+              className="min-w-[200px]"
               value={sectionFilter}
-              onChange={(e) => setSectionFilter(e.target.value)}
-              className="px-3 py-1.5 rounded-lg text-sm outline-none bg-white"
-              style={{ border: `1px solid ${BRAND.inputBorder}`, color: BRAND.text }}
-            >
-              <option value="">All sections</option>
-              {(overview?.sections ?? []).map((s) => (
-                <option key={s.section_id} value={s.section_id}>
-                  {s.course.code} — {s.label}
-                </option>
-              ))}
-            </select>
+              onChange={setSectionFilter}
+              options={[
+                { value: "", label: "All sections" },
+                ...(overview?.sections ?? []).map((s) => ({
+                  value: s.section_id,
+                  label: `${s.course.code} — ${s.label}`,
+                })),
+              ]}
+            />
             <button
               type="button"
               onClick={refresh}

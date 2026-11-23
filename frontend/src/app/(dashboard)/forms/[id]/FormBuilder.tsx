@@ -1,6 +1,7 @@
 "use client";
 
 import Modal from "@/components/Modal";
+import Select from "@/components/Select";
 import {
   deleteForm,
   listFormSubmissions,
@@ -525,56 +526,48 @@ export default function FormBuilder({
               <div className="grid gap-4 sm:grid-cols-3">
                 <div>
                   <Label htmlFor="f-dept">Department</Label>
-                  <select
+                  <Select
                     id="f-dept"
                     value={s.department_id ?? ""}
-                    onChange={(e) => patch("department_id", e.target.value || null)}
-                    className={fieldCls}
-                    style={fieldStyle}
-                  >
-                    <option value="">Whole institution</option>
-                    {scope.departments.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name} ({d.code})
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => patch("department_id", v || null)}
+                    options={[
+                      { value: "", label: "Whole institution" },
+                      ...scope.departments.map((d) => ({
+                        value: d.id,
+                        label: `${d.name} (${d.code})`,
+                      })),
+                    ]}
+                  />
                 </div>
                 <div>
                   <Label htmlFor="f-section">Section</Label>
-                  <select
+                  <Select
                     id="f-section"
                     value={s.section_id ?? ""}
-                    onChange={(e) => patch("section_id", e.target.value || null)}
-                    className={fieldCls}
-                    style={fieldStyle}
-                  >
-                    <option value="">Any section</option>
-                    {sectionsForScope.map((x) => (
-                      <option key={x.id} value={x.id}>
-                        {x.course_code ? `${x.course_code} · ` : ""}
-                        {x.label}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => patch("section_id", v || null)}
+                    options={[
+                      { value: "", label: "Any section" },
+                      ...sectionsForScope.map((x) => ({
+                        value: x.id,
+                        label: `${x.course_code ? `${x.course_code} · ` : ""}${x.label}`,
+                      })),
+                    ]}
+                  />
                 </div>
                 <div>
                   <Label htmlFor="f-term">Academic term</Label>
-                  <select
+                  <Select
                     id="f-term"
                     value={s.academic_term_id ?? ""}
-                    onChange={(e) => patch("academic_term_id", e.target.value || null)}
-                    className={fieldCls}
-                    style={fieldStyle}
-                  >
-                    <option value="">No specific term</option>
-                    {scope.terms.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name}
-                        {t.is_active ? " (active)" : ""}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => patch("academic_term_id", v || null)}
+                    options={[
+                      { value: "", label: "No specific term" },
+                      ...scope.terms.map((t) => ({
+                        value: t.id,
+                        label: `${t.name}${t.is_active ? " (active)" : ""}`,
+                      })),
+                    ]}
+                  />
                 </div>
               </div>
               <p className="text-xs" style={{ color: BRAND.textMuted }}>
@@ -618,19 +611,19 @@ export default function FormBuilder({
             {s.include_ils && (
               <div className="mt-3 max-w-md">
                 <Label htmlFor="f-wording">Question wording</Label>
-                <select
+                <Select
                   id="f-wording"
                   value={s.ils_wording}
-                  onChange={(e) => patch("ils_wording", e.target.value as "rdf" | "standard")}
-                  className={fieldCls}
-                  style={fieldStyle}
-                >
-                  <option value="rdf">{WORDING_LABELS.rdf}</option>
-                  <option value="standard" disabled={!standardAvailable}>
-                    {WORDING_LABELS.standard}
-                    {standardAvailable ? "" : " (not installed)"}
-                  </option>
-                </select>
+                  onChange={(v) => patch("ils_wording", v as "rdf" | "standard")}
+                  options={[
+                    { value: "rdf", label: WORDING_LABELS.rdf },
+                    {
+                      value: "standard",
+                      label: `${WORDING_LABELS.standard}${standardAvailable ? "" : " (not installed)"}`,
+                      disabled: !standardAvailable,
+                    },
+                  ]}
+                />
                 {!standardAvailable && (
                   <p className="text-xs mt-1" style={{ color: BRAND.textMuted }}>
                     The standard wording is licensed text and must be installed on the server
@@ -705,38 +698,24 @@ export default function FormBuilder({
                       </div>
                       <div>
                         <Label htmlFor={`po-t-${o.key}`}>Base type</Label>
-                        <select
+                        <Select
                           id={`po-t-${o.key}`}
                           value={o.base_type}
-                          onChange={(e) => updatePeer(i, { base_type: e.target.value as FormRelationType })}
-                          className={fieldCls}
-                          style={fieldStyle}
-                        >
-                          {(meta.relationship_types.length
+                          onChange={(v) => updatePeer(i, { base_type: v as FormRelationType })}
+                          options={(meta.relationship_types.length
                             ? (meta.relationship_types as FormRelationType[])
                             : (Object.keys(RELATION_LABELS) as FormRelationType[])
-                          ).map((t) => (
-                            <option key={t} value={t}>
-                              {RELATION_LABELS[t] ?? t}
-                            </option>
-                          ))}
-                        </select>
+                          ).map((t) => ({ value: t, label: RELATION_LABELS[t] ?? t }))}
+                        />
                       </div>
                       <div>
                         <Label htmlFor={`po-s-${o.key}`}>Strength</Label>
-                        <select
+                        <Select
                           id={`po-s-${o.key}`}
-                          value={o.strength}
-                          onChange={(e) => updatePeer(i, { strength: Number(e.target.value) })}
-                          className={fieldCls}
-                          style={fieldStyle}
-                        >
-                          {[1, 2, 3, 4, 5].map((n) => (
-                            <option key={n} value={n}>
-                              {n}
-                            </option>
-                          ))}
-                        </select>
+                          value={String(o.strength)}
+                          onChange={(v) => updatePeer(i, { strength: Number(v) })}
+                          options={[1, 2, 3, 4, 5].map((n) => ({ value: String(n), label: String(n) }))}
+                        />
                       </div>
                       <button
                         type="button"
@@ -831,43 +810,35 @@ export default function FormBuilder({
                   <div className="grid gap-3 sm:grid-cols-3 items-end">
                     <div>
                       <Label htmlFor={`q-k-${q.id}`}>Type</Label>
-                      <select
+                      <Select
                         id={`q-k-${q.id}`}
                         value={q.kind}
-                        onChange={(e) => {
-                          const kind = e.target.value as FormQuestionKind;
+                        onChange={(v) => {
+                          const kind = v as FormQuestionKind;
                           const isChoice = kind === "single_choice" || kind === "multi_choice";
                           updateQ(i, {
                             kind,
                             options: isChoice ? (q.options.length ? q.options : ["", ""]) : [],
                           });
                         }}
-                        className={fieldCls}
-                        style={fieldStyle}
-                      >
-                        {(Object.keys(KIND_LABELS) as FormQuestionKind[]).map((k) => (
-                          <option key={k} value={k}>
-                            {KIND_LABELS[k]}
-                          </option>
-                        ))}
-                      </select>
+                        options={(Object.keys(KIND_LABELS) as FormQuestionKind[]).map((k) => ({
+                          value: k,
+                          label: KIND_LABELS[k],
+                        }))}
+                      />
                     </div>
                     {q.kind === "scale" && (
                       <div>
                         <Label htmlFor={`q-m-${q.id}`}>Scale 1 to</Label>
-                        <select
+                        <Select
                           id={`q-m-${q.id}`}
-                          value={q.scale_max}
-                          onChange={(e) => updateQ(i, { scale_max: Number(e.target.value) })}
-                          className={fieldCls}
-                          style={fieldStyle}
-                        >
-                          {[2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
-                            <option key={n} value={n}>
-                              {n}
-                            </option>
-                          ))}
-                        </select>
+                          value={String(q.scale_max)}
+                          onChange={(v) => updateQ(i, { scale_max: Number(v) })}
+                          options={[2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => ({
+                            value: String(n),
+                            label: String(n),
+                          }))}
+                        />
                       </div>
                     )}
                     <Toggle

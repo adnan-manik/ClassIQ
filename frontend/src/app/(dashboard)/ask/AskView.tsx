@@ -1,5 +1,6 @@
 "use client";
 
+import Select from "@/components/Select";
 import MarkdownMessage from "@/components/MarkdownMessage";
 import { askClassIQ } from "@/lib/api";
 import { BRAND } from "@/lib/brand";
@@ -79,19 +80,15 @@ export default function AskView({
         {departments.length > 1 && (
           <label className="text-xs font-semibold flex items-center gap-2" style={{ color: BRAND.textMuted }}>
             Scope
-            <select
+            <Select
               value={deptId}
-              onChange={(e) => setDeptId(e.target.value)}
-              className="px-3 py-2 rounded-lg text-sm outline-none bg-white min-w-[200px]"
-              style={{ border: `1px solid ${BRAND.inputBorder}`, color: BRAND.text }}
-            >
-              <option value="">Whole institution</option>
-              {departments.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.code} · {d.name}
-                </option>
-              ))}
-            </select>
+              onChange={setDeptId}
+              className="min-w-[200px]"
+              options={[
+                { value: "", label: "Whole institution" },
+                ...departments.map((d) => ({ value: d.id, label: `${d.code} · ${d.name}` })),
+              ]}
+            />
           </label>
         )}
       </div>

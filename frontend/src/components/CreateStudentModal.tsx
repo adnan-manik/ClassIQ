@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import Modal from "./Modal";
+import Select from "./Select";
 import { BRAND } from "@/lib/brand";
 import { createClient } from "@/lib/supabase/client";
 import type { DepartmentOption } from "@/lib/types";
@@ -47,15 +48,12 @@ export default function CreateStudentModal({
   const batchListId = useId();
 
   // Preselect when there's only one department to choose from (e.g. an HoD).
-  useEffect(() => {
-    if (isOpen && departments.length === 1) {
-      setForm((f) => (f.departmentId ? f : { ...f, departmentId: departments[0].id }));
-    }
-  }, [isOpen, departments]);
+  const departmentId =
+    form.departmentId || (departments.length === 1 ? departments[0].id : "");
 
   const set =
     (key: keyof typeof EMPTY) =>
-    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    (e: React.ChangeEvent<HTMLInputElement>) =>
       setForm((f) => ({ ...f, [key]: e.target.value }));
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -85,7 +83,7 @@ export default function CreateStudentModal({
           full_name: form.fullName.trim(),
           email: form.email.trim(),
           external_id: form.studentId.trim() || null,
-          department_id: form.departmentId || null,
+          department_id: departmentId || null,
           program: form.program.trim() || null,
           batch: form.batch.trim() || null,
           current_semester: form.semester ? Number(form.semester) : null,
@@ -187,24 +185,18 @@ export default function CreateStudentModal({
         <SectionHeading>Academic placement</SectionHeading>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field id="department" label="Department" required={!noDepartments} className="sm:col-span-2">
-            <select
+            <Select
               id="department"
-              value={form.departmentId}
-              onChange={set("departmentId")}
-              className={`${INPUT_CLASS} bg-white`}
-              style={INPUT_STYLE}
+              value={departmentId}
+              onChange={(v) => setForm((f) => ({ ...f, departmentId: v }))}
+              placeholder={noDepartments ? "No departments available" : "Select a department…"}
               required={!noDepartments}
               disabled={loading || noDepartments}
-            >
-              <option value="">
-                {noDepartments ? "No departments available" : "Select a department…"}
-              </option>
-              {departments.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.code} · {d.name}
-                </option>
-              ))}
-            </select>
+              options={departments.map((d) => ({
+                value: d.id,
+                label: `${d.code} · ${d.name}`,
+              }))}
+            />
           </Field>
           <Field id="program" label="Program">
             <input
@@ -245,21 +237,16 @@ export default function CreateStudentModal({
             </datalist>
           </Field>
           <Field id="semester" label="Current Semester">
-            <select
+            <Select
               id="semester"
               value={form.semester}
-              onChange={set("semester")}
-              className={`${INPUT_CLASS} bg-white`}
-              style={INPUT_STYLE}
+              onChange={(v) => setForm((f) => ({ ...f, semester: v }))}
               disabled={loading}
-            >
-              <option value="">Not set</option>
-              {SEMESTERS.map((n) => (
-                <option key={n} value={n}>
-                  Semester {n}
-                </option>
-              ))}
-            </select>
+              options={[
+                { value: "", label: "Not set" },
+                ...SEMESTERS.map((n) => ({ value: String(n), label: `Semester ${n}` })),
+              ]}
+            />
           </Field>
         </div>
 

@@ -1,5 +1,6 @@
 "use client";
 
+import Select from "@/components/Select";
 import Badge from "@/components/Badge";
 import EmptyState from "@/components/EmptyState";
 import StatCard from "@/components/StatCard";
@@ -72,22 +73,18 @@ export default function LongitudinalView({
         {departments.length > 0 && (
           <label className="text-xs font-semibold flex items-center gap-2" style={{ color: BRAND.textMuted }}>
             Department
-            <select
+            <Select
               value={deptId}
-              onChange={(e) => {
+              onChange={(v) => {
                 setError(null);
-                setDeptId(e.target.value);
+                setDeptId(v);
               }}
-              className="px-3 py-2 rounded-lg text-sm outline-none bg-white min-w-[220px]"
-              style={{ border: `1px solid ${BRAND.inputBorder}`, color: BRAND.text }}
-            >
-              <option value="">All departments</option>
-              {departments.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.code} · {d.name}
-                </option>
-              ))}
-            </select>
+              className="min-w-[220px]"
+              options={[
+                { value: "", label: "All departments" },
+                ...departments.map((d) => ({ value: d.id, label: `${d.code} · ${d.name}` })),
+              ]}
+            />
           </label>
         )}
       </div>

@@ -14,7 +14,7 @@ export default function SurveyShell({
       style={{ backgroundColor: "var(--brand-mint)" }}
     >
       <div
-        className="absolute -top-32 -right-32 w-72 h-72 sm:w-[28rem] sm:h-[28rem] rounded-full pointer-events-none"
+        className="absolute -top-40 -right-40 w-64 h-64 sm:-top-32 sm:-right-32 sm:w-[28rem] sm:h-[28rem] rounded-full pointer-events-none"
         style={{ backgroundColor: "var(--brand-teal-dark)" }}
         aria-hidden="true"
       />

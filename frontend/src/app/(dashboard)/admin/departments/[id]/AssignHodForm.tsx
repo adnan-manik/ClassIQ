@@ -1,6 +1,7 @@
 "use client";
 
 import { assignHod, type ActionResult } from "@/app/(dashboard)/admin/_actions";
+import Select from "@/components/Select";
 import { BRAND } from "@/lib/brand";
 import type { InstitutionUserListItem } from "@/lib/types";
 import { useRouter } from "next/navigation";
@@ -50,25 +51,17 @@ export default function AssignHodForm({
         >
           Assign HoD
         </div>
-        <select
+        <Select
           name="auth_user_id"
           required
           defaultValue=""
-          className="w-full px-3 py-2 rounded-lg text-sm outline-none bg-white"
-          style={{
-            border: `1px solid ${BRAND.inputBorder}`,
-            color: BRAND.text,
-          }}
-        >
-          <option value="" disabled>
-            — pick an HoD user —
-          </option>
-          {unassigned.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.full_name} ({c.email})
-            </option>
-          ))}
-        </select>
+          placeholder="— pick an HoD user —"
+          options={unassigned.map((c) => ({
+            value: c.id,
+            label: c.full_name,
+            hint: c.email,
+          }))}
+        />
       </label>
       <button
         type="submit"

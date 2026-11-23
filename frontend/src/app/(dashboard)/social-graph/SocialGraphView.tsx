@@ -1,9 +1,10 @@
 "use client";
 
+import Select from "@/components/Select";
 import Badge from "@/components/Badge";
 import { BRAND } from "@/lib/brand";
 import { Check, Filter, Search, Users, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 
 const EDGE_COLOR: Record<string, string> = {
   friend: "#3B82F6",
@@ -118,6 +119,8 @@ function forceLayout(
   return pos;
 }
 
+const noopSubscribe = () => () => {};
+
 export default function SocialGraphView({ data }: { data: SocialGraphData }) {
   const [mode, setMode] = useState<FilterMode>("all");
   const [sectionId, setSectionId] = useState<string>(data.sections[0]?.id ?? "");
@@ -154,11 +157,12 @@ export default function SocialGraphView({ data }: { data: SocialGraphData }) {
   );
 
   // ─── Layout ────────────────────────────────────────────────────────────
+  const isClient = useSyncExternalStore(noopSubscribe, () => true, () => false);
   const w = 720;
   const h = 540;
   const positions = useMemo(
-    () => forceLayout(visibleStudents, visibleEdges, w, h),
-    [visibleStudents, visibleEdges],
+    () => (isClient ? forceLayout(visibleStudents, visibleEdges, w, h) : []),
+    [isClient, visibleStudents, visibleEdges],
   );
   const indexById = useMemo(
     () => new Map(visibleStudents.map((s, i) => [s.id, i])),
@@ -276,21 +280,14 @@ export default function SocialGraphView({ data }: { data: SocialGraphData }) {
         </FilterPill>
 
         {mode === "section" && (
-          <select
+          <Select
+            variant="pill"
+            aria-label="Section"
+            className="min-w-[200px]"
             value={sectionId}
-            onChange={(e) => setSectionId(e.target.value)}
-            className="bg-white text-sm font-medium rounded-full px-4 py-2 outline-none"
-            style={{
-              border: `1px solid ${BRAND.cardBorder}`,
-              color: BRAND.text,
-            }}
-          >
-            {data.sections.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.label}
-              </option>
-            ))}
-          </select>
+            onChange={setSectionId}
+            options={data.sections.map((s) => ({ value: s.id, label: s.label }))}
+          />
         )}
       </div>
 
@@ -326,6 +323,10 @@ export default function SocialGraphView({ data }: { data: SocialGraphData }) {
                 custom set.
               </p>
             </div>
+          ) : !isClient ? (
+            // The iterative layout drifts by tiny float amounts between the
+            // server and the browser, so draw the graph only in the browser.
+            <div className="w-full" style={{ aspectRatio: `${w} / ${h}` }} aria-hidden="true" />
           ) : (
             <svg
               viewBox={`0 0 ${w} ${h}`}
