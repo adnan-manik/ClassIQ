@@ -64,6 +64,14 @@ class IngestionError(Exception):
     """Whole-batch failure (bad references, nothing parseable…)."""
 
 
+def scoped_response_id(external_response_id: str, academic_term_id: UUID | None) -> str:
+    """`rdf:Rahema_Shakil` → `rdf:Rahema_Shakil@term:<uuid>`. Without a term the
+    id is left as it is, which is how it was stored before term scoping."""
+    if academic_term_id is None:
+        return external_response_id
+    return f"{external_response_id}@term:{academic_term_id}"
+
+
 @dataclass
 class IngestionSummary:
     students_seen: int = 0
@@ -384,14 +392,18 @@ async def run_ingestion(
         inst, qmap = await ensure_instrument(db)
 
     existing_ext_ids: set[str] = set()
+    # (id, term) of stored responses. Rows written before term scoping carry
+    # the bare id; they still count as duplicates within their own term.
+    existing_pairs: set[tuple[str, UUID | None]] = set()
     if inst is not None:
         stmt = (
-            select(SurveyResponse.external_response_id)
+            select(SurveyResponse.external_response_id, SurveyResponse.academic_term_id)
             .where(SurveyResponse.institution_id == institution_id)
             .where(SurveyResponse.instrument_id == inst.id)
             .where(SurveyResponse.external_response_id.is_not(None))
         )
-        existing_ext_ids = set((await db.execute(stmt)).scalars().all())
+        existing_pairs = {(ext, term) for ext, term in (await db.execute(stmt)).all()}
+        existing_ext_ids = {ext for ext, _term in existing_pairs}
 
     roster = await _load_roster(db, institution_id)
 
@@ -587,8 +599,14 @@ async def run_ingestion(
             else:
                 summary.students_matched += 1
 
-        # Idempotency
-        if r.external_response_id in existing_ext_ids:
+        # Idempotency. An id derived from the respondent repeats when the same
+        # student is surveyed again next term, so it is unique per term only.
+        bare_id = r.external_response_id
+        if r.term_scoped_id:
+            r.external_response_id = scoped_response_id(bare_id, academic_term_id)
+        if r.external_response_id in existing_ext_ids or (
+            r.term_scoped_id and (bare_id, academic_term_id) in existing_pairs
+        ):
             summary.responses_duplicate += 1
             continue
 

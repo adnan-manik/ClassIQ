@@ -93,7 +93,8 @@ def parse_csv(
                 issues.append(IngestionIssue(ref, "submitted_at", f"not ISO-8601: {raw_when!r}"))
 
         response_id = col(row, "response_id", "responseid")
-        if not response_id:
+        derived_id = not response_id
+        if derived_id:
             digest = hashlib.sha1(
                 f"{ext_id or ''}|{email or ''}|{''.join(answers.get(q, '?') for q in range(1, 45))}".encode()
             ).hexdigest()[:16]
@@ -118,6 +119,7 @@ def parse_csv(
                 submitted_at=when,
                 ref=ref,
                 extra=extra,
+                term_scoped_id=derived_id,
             )
         )
 
