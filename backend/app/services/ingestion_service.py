@@ -26,7 +26,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.engines.fslsm.scorer import score_responses
+from app.engines.fslsm.scorer import FslsmScore, score_responses
 from app.ingestion.ils_instrument import (
     INSTRUMENT_NAME,
     INSTRUMENT_VERSION,
@@ -62,6 +62,14 @@ MAX_ERRORS_IN_SUMMARY = 200
 
 class IngestionError(Exception):
     """Whole-batch failure (bad references, nothing parseable…)."""
+
+
+def scoped_response_id(external_response_id: str, academic_term_id: UUID | None) -> str:
+    """`rdf:Rahema_Shakil` → `rdf:Rahema_Shakil@term:<uuid>`. Without a term the
+    id is left as it is, which is how it was stored before term scoping."""
+    if academic_term_id is None:
+        return external_response_id
+    return f"{external_response_id}@term:{academic_term_id}"
 
 
 @dataclass
@@ -384,14 +392,18 @@ async def run_ingestion(
         inst, qmap = await ensure_instrument(db)
 
     existing_ext_ids: set[str] = set()
+    # (id, term) of stored responses. Rows written before term scoping carry
+    # the bare id; they still count as duplicates within their own term.
+    existing_pairs: set[tuple[str, UUID | None]] = set()
     if inst is not None:
         stmt = (
-            select(SurveyResponse.external_response_id)
+            select(SurveyResponse.external_response_id, SurveyResponse.academic_term_id)
             .where(SurveyResponse.institution_id == institution_id)
             .where(SurveyResponse.instrument_id == inst.id)
             .where(SurveyResponse.external_response_id.is_not(None))
         )
-        existing_ext_ids = set((await db.execute(stmt)).scalars().all())
+        existing_pairs = {(ext, term) for ext, term in (await db.execute(stmt)).all()}
+        existing_ext_ids = {ext for ext, _term in existing_pairs}
 
     roster = await _load_roster(db, institution_id)
 
@@ -587,8 +599,14 @@ async def run_ingestion(
             else:
                 summary.students_matched += 1
 
-        # Idempotency
-        if r.external_response_id in existing_ext_ids:
+        # Idempotency. An id derived from the respondent repeats when the same
+        # student is surveyed again next term, so it is unique per term only.
+        bare_id = r.external_response_id
+        if r.term_scoped_id:
+            r.external_response_id = scoped_response_id(bare_id, academic_term_id)
+        if r.external_response_id in existing_ext_ids or (
+            r.term_scoped_id and (bare_id, academic_term_id) in existing_pairs
+        ):
             summary.responses_duplicate += 1
             continue
 
@@ -660,3 +678,131 @@ async def run_ingestion(
     )
     await db.commit()
     return IngestionReport(job.id, status, False, source, summary)
+
+
+# ─── Single response (public survey forms) ──────────────────────────────────
+#
+# A public form submission is one response for one already-resolved student.
+# The batch pipeline above would create a job row and reload the whole
+# tenant's roster, response ids and versions for it, so forms use these two
+# writers instead. Both flush; the caller commits.
+
+@dataclass(frozen=True)
+class SingleResponseWrite:
+    response_id: UUID
+    profile_id: UUID
+    score: FslsmScore
+
+
+async def write_single_response(
+    db: AsyncSession,
+    *,
+    institution_id: UUID,
+    student_id: UUID,
+    answers: dict[int, str],
+    source: ResponseSource,
+    academic_term_id: UUID | None,
+    external_response_id: str,
+    now: datetime,
+) -> SingleResponseWrite:
+    """Store one complete 44-answer response and make its profile current."""
+    issues = validate_response(
+        InternalResponse(
+            external_response_id=external_response_id,
+            answers=answers,
+            source=source,
+            extra={"student_id": student_id},
+        )
+    )
+    if issues:
+        raise IngestionError(issues[0].message)
+
+    inst, qmap = await ensure_instrument(db)
+    version = (
+        await db.execute(
+            select(func.max(StudentProfile.version)).where(StudentProfile.student_id == student_id)
+        )
+    ).scalar() or 0
+
+    response = SurveyResponse(
+        id=uuid4(),
+        institution_id=institution_id,
+        student_id=student_id,
+        instrument_id=inst.id,
+        academic_term_id=academic_term_id,
+        submitted_at=now,
+        source=source,
+        ingestion_job_id=None,
+        external_response_id=external_response_id,
+        created_at=now,
+    )
+    db.add(response)
+    await db.flush()  # answers + profile reference the response
+    db.add_all(
+        SurveyAnswer(response_id=response.id, question_id=qmap[q], choice=AnswerChoice(c))
+        for q, c in answers.items()
+    )
+
+    score = score_responses(answers)  # type: ignore[arg-type]
+    dominant = score.dominant_axis()
+    await db.execute(
+        update(StudentProfile)
+        .where(StudentProfile.student_id == student_id)
+        .where(StudentProfile.is_current.is_(True))
+        .values(is_current=False)
+    )
+    profile = StudentProfile(
+        id=uuid4(),
+        institution_id=institution_id,
+        student_id=student_id,
+        derived_from_response_id=response.id,
+        version=int(version) + 1,
+        is_current=True,
+        scored_at=now,
+        scoring_engine_version=FSLSM_SCORER_VERSION,
+        active_reflective_score=score.active_reflective,
+        sensing_intuitive_score=score.sensing_intuitive,
+        visual_verbal_score=score.visual_verbal,
+        sequential_global_score=score.sequential_global,
+        dominant_axis=FslsmAxis(dominant.value) if dominant else None,
+    )
+    db.add(profile)
+    await db.flush()
+    return SingleResponseWrite(response.id, profile.id, score)
+
+
+async def write_aux_profile(
+    db: AsyncSession,
+    *,
+    institution_id: UUID,
+    student_id: UUID,
+    academic_term_id: UUID | None,
+    collaboration_pref: CollabPref | None,
+    participation_level: ParticipationLevel | None,
+    now: datetime,
+) -> UUID:
+    """New current aux profile for this student and term."""
+    await db.execute(
+        update(StudentAuxProfile)
+        .where(StudentAuxProfile.student_id == student_id)
+        .where(StudentAuxProfile.is_current.is_(True))
+        .where(
+            (StudentAuxProfile.academic_term_id == academic_term_id)
+            if academic_term_id is not None
+            else StudentAuxProfile.academic_term_id.is_(None)
+        )
+        .values(is_current=False)
+    )
+    aux = StudentAuxProfile(
+        id=uuid4(),
+        institution_id=institution_id,
+        student_id=student_id,
+        academic_term_id=academic_term_id,
+        collaboration_pref=collaboration_pref,
+        participation_level=participation_level,
+        is_current=True,
+        collected_at=now,
+    )
+    db.add(aux)
+    await db.flush()
+    return aux.id

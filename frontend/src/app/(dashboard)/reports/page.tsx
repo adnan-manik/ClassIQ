@@ -8,8 +8,10 @@ import { FSLSM_AXES, type FslsmAxis } from "@/lib/types";
 import { ChevronLeft, ChevronRight, FileBarChart } from "lucide-react";
 import Link from "next/link";
 import ReportActions from "./ReportActions";
+import ReportSectionFilter from "./ReportSectionFilter";
 
 const PER_PAGE = 25;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default async function ReportsPage({
   searchParams,
@@ -18,13 +20,36 @@ export default async function ReportsPage({
 }) {
   const supabase = await createClient();
 
-  const { page, from, to } = pageWindow((await searchParams).page, PER_PAGE);
+  const params = await searchParams;
+  const { page, from, to } = pageWindow(params.page, PER_PAGE);
+  // `?section=` is untrusted text; anything that isn't a UUID means "all".
+  const rawSection = Array.isArray(params.section) ? params.section[0] : params.section;
+  const sectionId = rawSection && UUID_RE.test(rawSection) ? rawSection : "";
+
+  // Every section the viewer can see (RLS-scoped), for the filter dropdown.
+  const { data: sectionRows } = await supabase
+    .from("sections")
+    .select("id, label, state, course:courses(code, name)")
+    .order("label");
+  const sectionOptions = (sectionRows ?? [])
+    .map((s) => {
+      type Co = { code: string; name: string };
+      const c = (Array.isArray(s.course) ? s.course[0] : s.course) as Co | null;
+      return {
+        id: s.id as string,
+        code: c?.code ?? "",
+        label: `${c?.code ?? "—"} — Section ${s.label}`,
+        hint: [c?.name, s.state].filter(Boolean).join(" · "),
+      };
+    })
+    .sort((a, b) => a.code.localeCompare(b.code) || a.label.localeCompare(b.label));
+  const selectedSection = sectionOptions.find((s) => s.id === sectionId) ?? null;
 
   // One page at a time. Unbounded, this selected every simulation ever run and
   // dragged each one's nested factor rows along with it, so the landing cost
   // grew with the archive. `count: "exact"` comes back in the same request,
   // which is what lets the pager below know where it is.
-  const { data: results, count } = await supabase
+  let query = supabase
     .from("simulation_results")
     .select(
       `
@@ -40,7 +65,9 @@ export default async function ReportsPage({
       `,
       { count: "exact" },
     )
-    .not("section_id", "is", null)
+    .not("section_id", "is", null);
+  if (sectionId) query = query.eq("section_id", sectionId);
+  const { data: results, count } = await query
     .order("created_at", { ascending: false })
     .range(from, to);
 
@@ -73,16 +100,30 @@ export default async function ReportsPage({
             </p>
           )}
         </div>
-        <ReportActions />
+        <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+          <ReportSectionFilter
+            sections={sectionOptions.map(({ id, label, hint }) => ({ id, label, hint }))}
+            value={selectedSection?.id ?? ""}
+          />
+          <ReportActions />
+        </div>
       </div>
 
       {shown === 0 ? (
         <EmptyState
           icon={FileBarChart}
-          title={total === 0 ? "No simulation reports yet" : "Nothing on this page"}
+          title={
+            total === 0
+              ? selectedSection
+                ? `No reports for ${selectedSection.label} yet`
+                : "No simulation reports yet"
+              : "Nothing on this page"
+          }
           description={
             total === 0
-              ? "Reports appear here after running simulations on draft sections."
+              ? selectedSection
+                ? "Run a simulation for this section in Section Builder and its report will appear here."
+                : "Reports appear here after running simulations on draft sections."
               : `This archive has ${total} report${total === 1 ? "" : "s"} across ${lastPage} page${lastPage === 1 ? "" : "s"}.`
           }
         />
@@ -330,11 +371,11 @@ export default async function ReportsPage({
           className="flex items-center justify-between gap-3 pt-2 print:hidden"
           aria-label="Report pages"
         >
-          <PagerLink page={page - 1} disabled={page <= 1} direction="prev" />
+          <PagerLink page={page - 1} disabled={page <= 1} direction="prev" section={sectionId} />
           <span className="text-sm" style={{ color: BRAND.textMuted }}>
             Page {Math.min(page, lastPage)} of {lastPage}
           </span>
-          <PagerLink page={page + 1} disabled={page >= lastPage} direction="next" />
+          <PagerLink page={page + 1} disabled={page >= lastPage} direction="next" section={sectionId} />
         </nav>
       )}
     </div>
@@ -345,10 +386,12 @@ function PagerLink({
   page,
   disabled,
   direction,
+  section,
 }: {
   page: number;
   disabled: boolean;
   direction: "prev" | "next";
+  section: string;
 }) {
   const label = direction === "prev" ? "Newer" : "Older";
   const Icon = direction === "prev" ? ChevronLeft : ChevronRight;
@@ -374,7 +417,7 @@ function PagerLink({
 
   return (
     <Link
-      href={page <= 1 ? "/reports" : `/reports?page=${page}`}
+      href={reportsHref(page, section)}
       className={shared}
       style={{
         border: `1px solid ${BRAND.cardBorder}`,
@@ -387,4 +430,12 @@ function PagerLink({
       {direction === "next" && <Icon size={16} />}
     </Link>
   );
+}
+
+function reportsHref(page: number, section: string) {
+  const q = new URLSearchParams();
+  if (section) q.set("section", section);
+  if (page > 1) q.set("page", String(page));
+  const qs = q.toString();
+  return qs ? `/reports?${qs}` : "/reports";
 }

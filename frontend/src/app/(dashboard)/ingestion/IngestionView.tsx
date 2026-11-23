@@ -2,6 +2,7 @@
 
 import Badge from "@/components/Badge";
 import EmptyState from "@/components/EmptyState";
+import Select from "@/components/Select";
 import {
   getInstrument,
   ingestManual,
@@ -270,46 +271,40 @@ function UploadPanel({
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <Field label="Format">
-            <select
+            <Select
               value={kind}
-              onChange={(e) => setKind(e.target.value as "rdf" | "csv")}
-              className="w-full px-3 py-2 rounded-lg text-sm outline-none bg-white"
-              style={{ border: `1px solid ${BRAND.inputBorder}`, color: BRAND.text }}
-            >
-              <option value="rdf">RDF / OWL (rdf_bulk_import)</option>
-              <option value="csv">ClassIQ CSV (classiq_internal)</option>
-            </select>
+              onChange={(v) => setKind(v as "rdf" | "csv")}
+              options={[
+                { value: "rdf", label: "RDF / OWL (rdf_bulk_import)" },
+                { value: "csv", label: "ClassIQ CSV (classiq_internal)" },
+              ]}
+            />
           </Field>
           <Field label="Academic term">
-            <select
+            <Select
               value={termId}
-              onChange={(e) => setTermId(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg text-sm outline-none bg-white"
-              style={{ border: `1px solid ${BRAND.inputBorder}`, color: BRAND.text }}
-            >
-              <option value="">— active term —</option>
-              {options.terms.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                  {t.is_active ? " (active)" : ""}
-                </option>
-              ))}
-            </select>
+              onChange={setTermId}
+              options={[
+                { value: "", label: "— active term —" },
+                ...options.terms.map((t) => ({
+                  value: t.id,
+                  label: `${t.name}${t.is_active ? " (active)" : ""}`,
+                })),
+              ]}
+            />
           </Field>
           <Field label="Department for new students">
-            <select
+            <Select
               value={deptId}
-              onChange={(e) => setDeptId(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg text-sm outline-none bg-white"
-              style={{ border: `1px solid ${BRAND.inputBorder}`, color: BRAND.text }}
-            >
-              <option value="">— none —</option>
-              {options.departments.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.code} · {d.name}
-                </option>
-              ))}
-            </select>
+              onChange={setDeptId}
+              options={[
+                { value: "", label: "— none —" },
+                ...options.departments.map((d) => ({
+                  value: d.id,
+                  label: `${d.code} · ${d.name}`,
+                })),
+              ]}
+            />
           </Field>
         </div>
 
@@ -385,7 +380,6 @@ function ManualPanel({
     options.students.length ? "existing" : "new",
   );
   const [studentId, setStudentId] = useState(options.students[0]?.id ?? "");
-  const [studentQuery, setStudentQuery] = useState("");
   const [externalId, setExternalId] = useState("");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -397,17 +391,6 @@ function ManualPanel({
   const [answers, setAnswers] = useState<Record<number, "A" | "B">>({});
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<IngestionReport | null>(null);
-
-  const filteredStudents = useMemo(() => {
-    const q = studentQuery.trim().toLowerCase();
-    if (!q) return options.students;
-    return options.students.filter(
-      (s) =>
-        s.full_name.toLowerCase().includes(q) ||
-        (s.external_id ?? "").toLowerCase().includes(q) ||
-        (s.email ?? "").toLowerCase().includes(q),
-    );
-  }, [studentQuery, options.students]);
 
   const answered = Object.keys(answers).length;
   const total = inst?.total_questions ?? 44;
@@ -501,29 +484,20 @@ function ManualPanel({
 
         {mode === "existing" ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Field label="Search">
-              <input
-                value={studentQuery}
-                onChange={(e) => setStudentQuery(e.target.value)}
-                placeholder="Name, ID or email…"
-                className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                style={{ border: `1px solid ${BRAND.inputBorder}`, color: BRAND.text }}
-              />
-            </Field>
-            <Field label={`Student (${filteredStudents.length})`}>
-              <select
+            <Field label="Student">
+              <Select
                 value={studentId}
-                onChange={(e) => setStudentId(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg text-sm outline-none bg-white"
-                style={{ border: `1px solid ${BRAND.inputBorder}`, color: BRAND.text }}
-              >
-                {filteredStudents.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.full_name}
-                    {s.external_id ? ` · ${s.external_id}` : ""}
-                  </option>
-                ))}
-              </select>
+                onChange={setStudentId}
+                searchable
+                searchPlaceholder="Name, ID or email…"
+                options={options.students.map((s) => ({
+                  value: s.id,
+                  label: s.full_name,
+                  hint:
+                    [s.external_id, s.email].filter(Boolean).join(" · ") ||
+                    undefined,
+                }))}
+              />
             </Field>
           </div>
         ) : (
@@ -559,45 +533,38 @@ function ManualPanel({
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <Field label="Academic term">
-            <select
+            <Select
               value={termId}
-              onChange={(e) => setTermId(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg text-sm outline-none bg-white"
-              style={{ border: `1px solid ${BRAND.inputBorder}`, color: BRAND.text }}
-            >
-              <option value="">— active term —</option>
-              {options.terms.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
+              onChange={setTermId}
+              options={[
+                { value: "", label: "— active term —" },
+                ...options.terms.map((t) => ({ value: t.id, label: t.name })),
+              ]}
+            />
           </Field>
           <Field label="Collaboration preference (aux)">
-            <select
+            <Select
               value={collab}
-              onChange={(e) => setCollab(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg text-sm outline-none bg-white"
-              style={{ border: `1px solid ${BRAND.inputBorder}`, color: BRAND.text }}
-            >
-              <option value="">— skip —</option>
-              <option value="solo">Solo</option>
-              <option value="pair">Pair</option>
-              <option value="group">Group</option>
-            </select>
+              onChange={setCollab}
+              options={[
+                { value: "", label: "— skip —" },
+                { value: "solo", label: "Solo" },
+                { value: "pair", label: "Pair" },
+                { value: "group", label: "Group" },
+              ]}
+            />
           </Field>
           <Field label="Participation level (aux)">
-            <select
+            <Select
               value={part}
-              onChange={(e) => setPart(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg text-sm outline-none bg-white"
-              style={{ border: `1px solid ${BRAND.inputBorder}`, color: BRAND.text }}
-            >
-              <option value="">— skip —</option>
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-            </select>
+              onChange={setPart}
+              options={[
+                { value: "", label: "— skip —" },
+                { value: "low", label: "Low" },
+                { value: "medium", label: "Medium" },
+                { value: "high", label: "High" },
+              ]}
+            />
           </Field>
         </div>
       </div>

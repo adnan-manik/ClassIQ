@@ -1,5 +1,6 @@
 "use client";
 
+import Select from "@/components/Select";
 import FslsmDistributionChart from "@/components/admin/charts/FslsmDistributionChart";
 import StatCard from "@/components/StatCard";
 import { getDepartmentAnalytics } from "@/lib/api";
@@ -52,24 +53,19 @@ export default function AnalyticsDrilldown({
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3 flex-wrap">
-        <label className="text-xs uppercase font-semibold" style={{ color: BRAND.textMuted }}>
+        <label htmlFor="drilldown-dept" className="text-xs uppercase font-semibold" style={{ color: BRAND.textMuted }}>
           Department
         </label>
-        <select
+        <Select
+          id="drilldown-dept"
           value={deptId}
-          onChange={(e) => {
+          onChange={(v) => {
             setError(null);
-            setDeptId(e.target.value);
+            setDeptId(v);
           }}
-          className="px-3 py-2 rounded-lg text-sm outline-none bg-white min-w-[240px]"
-          style={{ border: `1px solid ${BRAND.inputBorder}`, color: BRAND.text }}
-        >
-          {departments.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.code} · {d.name}
-            </option>
-          ))}
-        </select>
+          className="min-w-[240px] w-auto"
+          options={departments.map((d) => ({ value: d.id, label: `${d.code} · ${d.name}` }))}
+        />
         {!current && !error && (
           <span className="text-xs italic" style={{ color: BRAND.textMuted }}>
             Loading…

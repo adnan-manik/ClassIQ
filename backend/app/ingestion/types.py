@@ -30,6 +30,11 @@ class InternalResponse:
     submitted_at: datetime | None = None
     ref: str | None = None  # where it came from (RDF individual, CSV line…) for error messages
     extra: dict = field(default_factory=dict)  # aux data (collaboration, participation…)
+    # True when `external_response_id` is derived from who answered (an RDF
+    # individual's name, a hash of identity + answers) rather than issued per
+    # submission. Such an id repeats when the same student is surveyed again
+    # next term, so the pipeline scopes it to the academic term.
+    term_scoped_id: bool = False
 
 
 @dataclass(slots=True)

@@ -42,6 +42,23 @@ class EarlyWarningError(Exception):
     """User-facing failure (400)."""
 
 
+FlagKey = tuple[UUID | None, str, str | None]
+
+
+def flag_key(student_id: UUID | None, flag_type: str, metric_name: str | None) -> FlagKey:
+    """Identity of a flag across evaluations.
+
+    The type alone is not enough: one student can be under the attendance band
+    and also report low engagement, which are two `engagement` flags with
+    different metrics. The section-level `compatibility` flag is the exception:
+    its metric moves between class_grade and attendance_pct as data arrives, and
+    it is still the same flag.
+    """
+    if flag_type == WarningType.compatibility.value:
+        return (student_id, flag_type, None)
+    return (student_id, flag_type, metric_name)
+
+
 # ─── Shapes ─────────────────────────────────────────────────────────────────
 
 def _flag_shape(
@@ -304,34 +321,44 @@ async def evaluate_section(
             )
         ).scalars().all()
     )
-    by_key = {(f.student_id, f.type.value): f for f in existing}
+    # Oldest flag wins a key; any other unresolved flag on the same key is a
+    # leftover duplicate (the old (student, type) key let them accumulate) and
+    # is resolved below.
+    by_key: dict[FlagKey, EarlyWarningFlag] = {}
+    duplicates: list[EarlyWarningFlag] = []
+    for f in sorted(existing, key=lambda f: f.created_at or now):
+        key = flag_key(f.student_id, f.type.value, f.metric_name)
+        if key in by_key:
+            duplicates.append(f)
+        else:
+            by_key[key] = f
     opened = updated = 0
-    seen: set[tuple[UUID | None, str]] = set()
+    seen: set[FlagKey] = set()
     for d in drafts:
-        key = (d.student_id, d.type)
+        key = flag_key(d.student_id, d.type, d.metric_name)
         seen.add(key)
         f = by_key.get(key)
         if f is None:
-            db.add(
-                EarlyWarningFlag(
-                    id=uuid4(),
-                    institution_id=institution_id,
-                    section_id=section.id,
-                    student_id=d.student_id,
-                    type=WarningType(d.type),
-                    severity=WarningSeverity(d.severity),
-                    status=WarningStatus.open,
-                    message=d.message,
-                    predicted_outcome=predicted,
-                    metric_name=d.metric_name,
-                    expected_value=d.expected_value,
-                    actual_value=d.actual_value,
-                    deviation=d.deviation,
-                    week_no=d.week_no,
-                    evaluated_at=now,
-                    created_at=now,
-                )
+            f = EarlyWarningFlag(
+                id=uuid4(),
+                institution_id=institution_id,
+                section_id=section.id,
+                student_id=d.student_id,
+                type=WarningType(d.type),
+                severity=WarningSeverity(d.severity),
+                status=WarningStatus.open,
+                message=d.message,
+                predicted_outcome=predicted,
+                metric_name=d.metric_name,
+                expected_value=d.expected_value,
+                actual_value=d.actual_value,
+                deviation=d.deviation,
+                week_no=d.week_no,
+                evaluated_at=now,
+                created_at=now,
             )
+            db.add(f)
+            by_key[key] = f
             opened += 1
         else:
             f.severity = WarningSeverity(d.severity)
@@ -345,8 +372,12 @@ async def evaluate_section(
             f.predicted_outcome = predicted
             updated += 1
     auto_resolved = 0
+    duplicate_ids = {f.id for f in duplicates}
     for f in existing:
-        if (f.student_id, f.type.value) not in seen:
+        if (
+            f.id in duplicate_ids
+            or flag_key(f.student_id, f.type.value, f.metric_name) not in seen
+        ):
             f.status = WarningStatus.resolved
             f.resolved_at = now
             auto_resolved += 1

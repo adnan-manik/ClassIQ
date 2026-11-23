@@ -4,7 +4,15 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, Enum, ForeignKey, SmallInteger, UniqueConstraint
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    Enum,
+    ForeignKey,
+    SmallInteger,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -50,6 +58,13 @@ class PeerRelationship(Base):
         Enum(RelationshipSource, name="relationship_src", create_type=False),
         nullable=False,
         default=RelationshipSource.survey,
+    )
+    # The form's own wording ("Lab partner") and the submission it came from.
+    # Added by db/migrations/2026-11-23_survey_forms.sql. Deferred so scoring
+    # and every other reader keep working on a database without that migration.
+    label: Mapped[str | None] = mapped_column(String, deferred=True)
+    form_submission_id: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID, ForeignKey("survey_form_submissions.id"), deferred=True
     )
     created_by: Mapped[uuid.UUID | None] = mapped_column(PG_UUID)
     created_at: Mapped[datetime] = mapped_column(

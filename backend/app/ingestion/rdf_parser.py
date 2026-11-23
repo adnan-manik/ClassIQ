@@ -128,6 +128,7 @@ def parse_rdf(
                 student_external_id=None,
                 submitted_at=when,
                 ref=fragment,
+                term_scoped_id=True,
             )
         )
 

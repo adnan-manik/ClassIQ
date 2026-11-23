@@ -680,6 +680,7 @@ export interface StudentShift {
 
 export interface LongitudinalOverview {
   department_id: string | null;
+  section_id: string | null;
   students_total: number;
   students_with_history: number;
   versions_total: number;
@@ -825,4 +826,133 @@ export interface SectionDetailShape {
   student_count: number;
   latest_result: SimulationResultShape | null;
   students: StudentListItem[];
+}
+
+// ─── Survey forms (staff builder + public survey) ──────────────────────────
+
+export type FormStatus = "draft" | "open" | "closed";
+export type FormQuestionKind =
+  | "short_text"
+  | "long_text"
+  | "single_choice"
+  | "multi_choice"
+  | "scale"
+  | "number";
+export type FormRelationType = "friend" | "study_partner" | "neutral" | "conflict";
+
+export interface FormExtraQuestion {
+  id: string;
+  prompt: string;
+  kind: FormQuestionKind;
+  options: string[];
+  required: boolean;
+  scale_max: number;
+}
+
+export interface FormPeerOption {
+  key: string;
+  label: string;
+  base_type: FormRelationType;
+  strength: number;
+}
+
+/** Every editable field (PATCH body = any subset, plus `status`). */
+export interface FormSettings {
+  title: string;
+  description: string | null;
+  department_id: string | null;
+  section_id: string | null;
+  academic_term_id: string | null;
+  include_ils: boolean;
+  ils_wording: "rdf" | "standard";
+  collect_collaboration: boolean;
+  collect_participation: boolean;
+  collect_peers: boolean;
+  peer_options: FormPeerOption[];
+  max_peer_picks: number;
+  extra_questions: FormExtraQuestion[];
+  allow_new_students: boolean;
+  closes_at: string | null;
+}
+
+export interface SurveyFormShape extends FormSettings {
+  id: string;
+  code: string;
+  status: FormStatus;
+  created_at: string;
+  updated_at: string;
+  submission_count: number;
+}
+
+export interface FormMeta {
+  wordings: string[];
+  relationship_types: string[];
+  question_kinds: string[];
+  default_peer_options: FormPeerOption[];
+  max_extra_questions: number;
+  max_peer_options: number;
+}
+
+export interface FormSubmissionShape {
+  id: string;
+  student_id: string;
+  student_name: string;
+  student_external_id: string | null;
+  submitted_at: string;
+  voided_at: string | null;
+  profile: Record<string, unknown>;
+  peers: Record<string, unknown>[];
+  extra_answers: Record<string, unknown>;
+  fslsm: Record<string, number> | null;
+}
+
+export interface PublicFormQuestion {
+  sequence_no: number;
+  prompt: string;
+  answer_a: string;
+  answer_b: string;
+}
+
+export interface PublicForm {
+  code: string;
+  title: string;
+  description: string | null;
+  institution_name: string;
+  include_ils: boolean;
+  questions: PublicFormQuestion[];
+  collect_collaboration: boolean;
+  collect_participation: boolean;
+  collect_peers: boolean;
+  peer_options: { key: string; label: string }[];
+  max_peer_picks: number;
+  extra_questions: FormExtraQuestion[];
+  allow_new_students: boolean;
+  closes_at: string | null;
+}
+
+export interface PublicIdentity {
+  external_id?: string | null;
+  email?: string | null;
+  full_name?: string | null;
+}
+
+export interface PublicIdentifyResponse {
+  student_name: string;
+  new_student: boolean;
+  already_submitted: boolean;
+  classmates: { id: string; name: string }[];
+}
+
+export interface PublicSubmissionInput extends PublicIdentity {
+  answers: Record<number, "A" | "B">;
+  collaboration_pref?: "solo" | "pair" | "group" | null;
+  participation_level?: "low" | "medium" | "high" | null;
+  peers: { student_id: string; option: string }[];
+  extra_answers: Record<string, unknown>;
+}
+
+export interface PublicSubmitResponse {
+  submission_id: string;
+  fslsm: Record<string, number> | null;
+  dominant_axis: string | null;
 }

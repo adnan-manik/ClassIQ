@@ -4,7 +4,7 @@ import { evaluateSection, listSectionOutcomes, recordSectionOutcomes } from "@/l
 import { BRAND } from "@/lib/brand";
 import type { EvaluateResponse, OutcomeEntry as OutcomeEntryShape, OutcomeShape } from "@/lib/types";
 import { AlertTriangle, ClipboardCheck, History, Siren } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
 type Level = "" | "low" | "medium" | "high";
 
@@ -198,7 +198,7 @@ export default function OutcomeEntry({
                 <NumInput value={sectionRow.grade} onChange={(v) => setSectionRow({ ...sectionRow, grade: v })} />
               </td>
               <td className="px-3 py-1.5">
-                <LevelSelect value={sectionRow.engagement} onChange={(v) => setSectionRow({ ...sectionRow, engagement: v })} />
+                <LevelSelect label="whole section" value={sectionRow.engagement} onChange={(v) => setSectionRow({ ...sectionRow, engagement: v })} />
               </td>
             </tr>
             {roster.map((s) => {
@@ -215,7 +215,7 @@ export default function OutcomeEntry({
                     <NumInput value={r.grade} onChange={(v) => patchRow(s.id, { grade: v })} />
                   </td>
                   <td className="px-3 py-1.5">
-                    <LevelSelect value={r.engagement} onChange={(v) => patchRow(s.id, { engagement: v })} />
+                    <LevelSelect label={s.full_name} value={r.engagement} onChange={(v) => patchRow(s.id, { engagement: v })} />
                   </td>
                 </tr>
               );
@@ -333,18 +333,77 @@ function NumInput({ value, onChange }: { value: string; onChange: (v: string) =>
   );
 }
 
-function LevelSelect({ value, onChange }: { value: Level; onChange: (v: Level) => void }) {
+const LEVELS: { value: Exclude<Level, "">; label: string; title: string }[] = [
+  { value: "low", label: "Low", title: "Low" },
+  { value: "medium", label: "Med", title: "Medium" },
+  { value: "high", label: "High", title: "High" },
+];
+
+/**
+ * Compact segmented radio group: one tab stop per row (roving tabindex), arrow
+ * keys move + select, clicking the checked option again clears it.
+ */
+function LevelSelect({
+  value,
+  onChange,
+  label,
+}: {
+  value: Level;
+  onChange: (v: Level) => void;
+  label?: string;
+}) {
+  const refs = useRef<(HTMLButtonElement | null)[]>([]);
+  const checkedIdx = LEVELS.findIndex((l) => l.value === value);
+  const tabbableIdx = checkedIdx >= 0 ? checkedIdx : 0;
+
+  const go = (idx: number) => {
+    const next = (idx + LEVELS.length) % LEVELS.length;
+    onChange(LEVELS[next].value);
+    refs.current[next]?.focus();
+  };
+
+  const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>, idx: number) => {
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+      e.preventDefault();
+      go(idx + 1);
+    } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+      e.preventDefault();
+      go(idx - 1);
+    }
+  };
+
   return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value as Level)}
-      className="px-2 py-1 rounded-lg text-sm outline-none bg-white"
-      style={{ border: `1px solid ${BRAND.inputBorder}`, color: BRAND.text }}
+    <div
+      role="radiogroup"
+      aria-label={label ? `Engagement level for ${label}` : "Engagement level"}
+      className="inline-flex items-center gap-0.5 rounded-full p-0.5"
+      style={{ backgroundColor: BRAND.subtleBg, border: `1px solid ${BRAND.cardBorder}` }}
     >
-      <option value="">—</option>
-      <option value="low">Low</option>
-      <option value="medium">Medium</option>
-      <option value="high">High</option>
-    </select>
+      {LEVELS.map((l, i) => {
+        const checked = i === checkedIdx;
+        return (
+          <button
+            key={l.value}
+            ref={(el) => {
+              refs.current[i] = el;
+            }}
+            type="button"
+            role="radio"
+            aria-checked={checked}
+            aria-label={l.title}
+            tabIndex={i === tabbableIdx ? 0 : -1}
+            onClick={() => onChange(checked ? "" : l.value)}
+            onKeyDown={(e) => onKeyDown(e, i)}
+            className="px-2.5 py-0.5 rounded-full text-xs font-semibold outline-none transition focus-visible:ring-[3px] focus-visible:ring-[#CCFBF1]"
+            style={{
+              backgroundColor: checked ? BRAND.teal : "transparent",
+              color: checked ? "#fff" : BRAND.textMuted,
+            }}
+          >
+            {l.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }

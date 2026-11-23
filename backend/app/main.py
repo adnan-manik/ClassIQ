@@ -16,6 +16,7 @@ from app.routers import (
     admin_institutions,
     admin_system,
     early_warning,
+    forms,
     health,
     ingestion,
     institution_analytics,
@@ -27,6 +28,7 @@ from app.routers import (
     llm,
     longitudinal,
     me,
+    public_forms,
     reports,
     scenarios,
     sections,
@@ -81,6 +83,9 @@ def create_app() -> FastAPI:
     app.include_router(longitudinal.router, prefix="/api")
     app.include_router(early_warning.router, prefix="/api")
     app.include_router(llm.router, prefix="/api")
+    app.include_router(forms.router, prefix="/api")
+    # No auth: students answer survey forms by code without an account.
+    app.include_router(public_forms.router, prefix="/api")
 
     # Super Admin (platform-wide)
     app.include_router(admin_institutions.router, prefix="/api")

@@ -22,7 +22,7 @@ INSERT INTO survey_questions (instrument_id, sequence_no, question_text, axis, r
 SELECT inst.id, v.seq, v.text, v.axis::fslsm_axis, v.prop, v.pole_a::fslsm_pole_a, v.pole_b::fslsm_pole_b
 FROM inst, (VALUES
   (1, 'I understand the algorithm better After I — (A) try it out / (B) think it through', 'active_reflective', 'I_understand_the_algorithm_better_After_I', 'active', 'reflective'),
-  (2, 'I would try to learn algorithms trough by — (A) innovative / (B) realistic', 'sensing_intuitive', 'I_would_try_to_learn_algorithms_trough_by', 'sensing', 'intuitive'),
+  (2, 'I would try to learn algorithms trough by — (A) realistic / (B) innovative', 'sensing_intuitive', 'I_would_try_to_learn_algorithms_trough_by', 'sensing', 'intuitive'),
   (3, 'When I think about yesterday''s Algorithms class — (A) get a picture / (B) get words', 'visual_verbal', 'When_I_think_about_yesterdays_Algorithms_class', 'visual', 'verbal'),
   (4, 'When I learn about Algorithms — (A) understand details first, may be fuzzy on the overall structure / (B) understand the overall structure, may be fuzzy on details', 'sequential_global', 'When_I_learn_about_Algorithms', 'sequential', 'global'),
   (5, 'When I am learn new algorithms — (A) talk about it / (B) think about it', 'active_reflective', 'When_I_am_learn_new_algorithms', 'active', 'reflective'),

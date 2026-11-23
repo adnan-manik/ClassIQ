@@ -1,7 +1,13 @@
 import { updateSession } from "@/lib/supabase/middleware";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/auth"];
+const PUBLIC_PATHS = [
+  "/login",
+  "/auth",
+  // Student-facing survey (no accounts) and its same-origin API proxy.
+  "/survey",
+  "/api/survey",
+];
 
 /**
  * Optimistic auth redirect. The proxy runs on every request, including route

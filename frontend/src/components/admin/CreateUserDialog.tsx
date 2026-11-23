@@ -1,6 +1,7 @@
 "use client";
 
 import { createUser, type ActionResult } from "@/app/(dashboard)/admin/_actions";
+import Select from "@/components/Select";
 import { BRAND } from "@/lib/brand";
 import type { DepartmentItem } from "@/lib/types";
 import { Plus, X } from "lucide-react";
@@ -119,21 +120,17 @@ function Dialog({
                   >
                     Department (optional)
                   </div>
-                  <select
+                  <Select
                     name="department_id"
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none bg-white"
-                    style={{
-                      border: `1px solid ${BRAND.inputBorder}`,
-                      color: BRAND.text,
-                    }}
-                  >
-                    <option value="">— none —</option>
-                    {departments.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.code} · {d.name}
-                      </option>
-                    ))}
-                  </select>
+                    defaultValue=""
+                    options={[
+                      { value: "", label: "— none —" },
+                      ...departments.map((d) => ({
+                        value: d.id,
+                        label: `${d.code} · ${d.name}`,
+                      })),
+                    ]}
+                  />
                 </label>
               )}
 

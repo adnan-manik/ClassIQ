@@ -1,5 +1,6 @@
 "use client";
 
+import Select from "@/components/Select";
 import Badge from "@/components/Badge";
 import EmptyState from "@/components/EmptyState";
 import ScoreRing from "@/components/ScoreRing";
@@ -925,20 +926,15 @@ function ScenarioBuilder({
                 />
               </Field>
               <Field label="Academic term">
-                <select
+                <Select
                   value={termId}
                   disabled={!!initial}
-                  onChange={(e) => setTermId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg text-sm outline-none bg-white disabled:opacity-60"
-                  style={{ border: `1px solid ${BRAND.inputBorder}`, color: BRAND.text }}
-                >
-                  {options.terms.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                      {t.is_active ? " (active)" : ""}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setTermId}
+                  options={options.terms.map((t) => ({
+                    value: t.id,
+                    label: `${t.name}${t.is_active ? " (active)" : ""}`,
+                  }))}
+                />
               </Field>
             </div>
             <Field label="Notes (optional)">
@@ -998,38 +994,29 @@ function ScenarioBuilder({
                       <div className="px-4 pb-4 space-y-3">
                         {liveForTerm.length > 0 && (
                           <Field label="Prefill from a live section">
-                            <select
-                              defaultValue=""
-                              onChange={(e) => {
-                                if (e.target.value) prefillFromLive(s.key, e.target.value);
-                                e.target.value = "";
+                            <Select
+                              value=""
+                              placeholder="— copy course, label, teacher and roster —"
+                              onChange={(v) => {
+                                if (v) prefillFromLive(s.key, v);
                               }}
-                              className="w-full px-3 py-2 rounded-lg text-sm outline-none bg-white"
-                              style={{ border: `1px solid ${BRAND.inputBorder}`, color: BRAND.text }}
-                            >
-                              <option value="">— copy course, label, teacher and roster —</option>
-                              {liveForTerm.map((l) => (
-                                <option key={l.id} value={l.id}>
-                                  {l.courseCode} {l.label} · {l.teacherName ?? "unassigned"} · {l.studentIds.length} students
-                                </option>
-                              ))}
-                            </select>
+                              options={liveForTerm.map((l) => ({
+                                value: l.id,
+                                label: `${l.courseCode} ${l.label} · ${l.teacherName ?? "unassigned"} · ${l.studentIds.length} students`,
+                              }))}
+                            />
                           </Field>
                         )}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                           <Field label="Course">
-                            <select
+                            <Select
                               value={s.course_id}
-                              onChange={(e) => patch(s.key, { course_id: e.target.value })}
-                              className="w-full px-3 py-2 rounded-lg text-sm outline-none bg-white"
-                              style={{ border: `1px solid ${BRAND.inputBorder}`, color: BRAND.text }}
-                            >
-                              {options.courses.map((c) => (
-                                <option key={c.id} value={c.id}>
-                                  {c.code} · {c.name}
-                                </option>
-                              ))}
-                            </select>
+                              onChange={(v) => patch(s.key, { course_id: v })}
+                              options={options.courses.map((c) => ({
+                                value: c.id,
+                                label: `${c.code} · ${c.name}`,
+                              }))}
+                            />
                           </Field>
                           <Field label="Label">
                             <input
@@ -1041,19 +1028,14 @@ function ScenarioBuilder({
                             />
                           </Field>
                           <Field label="Teacher">
-                            <select
+                            <Select
                               value={s.teacher_id}
-                              onChange={(e) => patch(s.key, { teacher_id: e.target.value })}
-                              className="w-full px-3 py-2 rounded-lg text-sm outline-none bg-white"
-                              style={{ border: `1px solid ${BRAND.inputBorder}`, color: BRAND.text }}
-                            >
-                              <option value="">— choose —</option>
-                              {options.teachers.map((t) => (
-                                <option key={t.id} value={t.id}>
-                                  {t.full_name}
-                                </option>
-                              ))}
-                            </select>
+                              onChange={(v) => patch(s.key, { teacher_id: v })}
+                              options={[
+                                { value: "", label: "— choose —" },
+                                ...options.teachers.map((t) => ({ value: t.id, label: t.full_name })),
+                              ]}
+                            />
                           </Field>
                         </div>
                         <StudentPicker
