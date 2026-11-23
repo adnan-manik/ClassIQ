@@ -10,7 +10,10 @@ The instrument name + version match db/seed_demo_data.mjs so the demo seed
 and the ingestion pipeline share one `survey_instruments` row.
 """
 
+import json
 from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
 
 from app.engines.fslsm.scorer import FslsmAxis, axis_for_question
 
@@ -72,7 +75,10 @@ RDF_PROPERTIES: tuple[str, ...] = (
 # Standard ILS answer pairs (a | b), used for question_text and the manual form.
 ANSWER_PAIRS: tuple[tuple[str, str], ...] = (
     ("try it out", "think it through"),
-    ("innovative", "realistic"),
+    # A scores sensing, so A is "realistic" (as in the standard ILS). This pair
+    # used to read ("innovative", "realistic"), which labelled the intuitive
+    # trait as the sensing answer. Scoring was always A → sensing.
+    ("realistic", "innovative"),
     ("get a picture", "get words"),
     ("understand details first, may be fuzzy on the overall structure", "understand the overall structure, may be fuzzy on details"),
     ("talk about it", "think about it"),
@@ -172,3 +178,65 @@ def ils_questions() -> list[IlsQuestion]:
 
 assert len(RDF_PROPERTIES) == TOTAL_QUESTIONS
 assert len(ANSWER_PAIRS) == TOTAL_QUESTIONS
+
+
+# ─── Question wording variants ──────────────────────────────────────────────
+#
+# Survey forms show the same 44 items (same A/B answers, same scoring) in one
+# of two wordings:
+#   "rdf"      — the stems of the ClassIQ / MAJU "Algorithms" survey, derived
+#                from the RDF property names above. Always available.
+#   "standard" — the stems of the published Felder–Soloman ILS. That text is
+#                copyrighted (© North Carolina State University; free for
+#                non-commercial educational and research use), so it is not
+#                bundled. Put the 44 stems, in order, in
+#                `ils_standard_stems.json` next to this file — a JSON array of
+#                44 strings — to enable it.
+
+WORDINGS = ("rdf", "standard")
+STANDARD_STEMS_FILE = Path(__file__).with_name("ils_standard_stems.json")
+
+
+@lru_cache(maxsize=1)
+def standard_stems() -> tuple[str, ...] | None:
+    """The licensed standard ILS stems, or None when the file is absent/invalid."""
+    try:
+        data = json.loads(STANDARD_STEMS_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if (
+        not isinstance(data, list)
+        or len(data) != TOTAL_QUESTIONS
+        or not all(isinstance(s, str) and s.strip() for s in data)
+    ):
+        return None
+    return tuple(s.strip() for s in data)
+
+
+def available_wordings() -> list[str]:
+    return [w for w in WORDINGS if w == "rdf" or standard_stems() is not None]
+
+
+@dataclass(frozen=True)
+class SurveyItem:
+    sequence_no: int
+    prompt: str
+    answer_a: str
+    answer_b: str
+
+
+def survey_items(wording: str) -> list[SurveyItem]:
+    """The 44 items as a respondent sees them. Raises ValueError for a wording
+    that is unknown or not installed."""
+    if wording == "standard":
+        stems = standard_stems()
+        if stems is None:
+            raise ValueError("The standard ILS wording is not installed")
+    elif wording == "rdf":
+        stems = tuple(_prompt(p) for p in RDF_PROPERTIES)
+    else:
+        raise ValueError(f"Unknown wording {wording!r}")
+    return [
+        SurveyItem(sequence_no=i, prompt=stems[i - 1], answer_a=a, answer_b=b)
+        for i, (a, b) in enumerate(ANSWER_PAIRS, start=1)
+    ]

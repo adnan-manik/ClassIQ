@@ -26,7 +26,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.engines.fslsm.scorer import score_responses
+from app.engines.fslsm.scorer import FslsmScore, score_responses
 from app.ingestion.ils_instrument import (
     INSTRUMENT_NAME,
     INSTRUMENT_VERSION,
@@ -678,3 +678,131 @@ async def run_ingestion(
     )
     await db.commit()
     return IngestionReport(job.id, status, False, source, summary)
+
+
+# ─── Single response (public survey forms) ──────────────────────────────────
+#
+# A public form submission is one response for one already-resolved student.
+# The batch pipeline above would create a job row and reload the whole
+# tenant's roster, response ids and versions for it, so forms use these two
+# writers instead. Both flush; the caller commits.
+
+@dataclass(frozen=True)
+class SingleResponseWrite:
+    response_id: UUID
+    profile_id: UUID
+    score: FslsmScore
+
+
+async def write_single_response(
+    db: AsyncSession,
+    *,
+    institution_id: UUID,
+    student_id: UUID,
+    answers: dict[int, str],
+    source: ResponseSource,
+    academic_term_id: UUID | None,
+    external_response_id: str,
+    now: datetime,
+) -> SingleResponseWrite:
+    """Store one complete 44-answer response and make its profile current."""
+    issues = validate_response(
+        InternalResponse(
+            external_response_id=external_response_id,
+            answers=answers,
+            source=source,
+            extra={"student_id": student_id},
+        )
+    )
+    if issues:
+        raise IngestionError(issues[0].message)
+
+    inst, qmap = await ensure_instrument(db)
+    version = (
+        await db.execute(
+            select(func.max(StudentProfile.version)).where(StudentProfile.student_id == student_id)
+        )
+    ).scalar() or 0
+
+    response = SurveyResponse(
+        id=uuid4(),
+        institution_id=institution_id,
+        student_id=student_id,
+        instrument_id=inst.id,
+        academic_term_id=academic_term_id,
+        submitted_at=now,
+        source=source,
+        ingestion_job_id=None,
+        external_response_id=external_response_id,
+        created_at=now,
+    )
+    db.add(response)
+    await db.flush()  # answers + profile reference the response
+    db.add_all(
+        SurveyAnswer(response_id=response.id, question_id=qmap[q], choice=AnswerChoice(c))
+        for q, c in answers.items()
+    )
+
+    score = score_responses(answers)  # type: ignore[arg-type]
+    dominant = score.dominant_axis()
+    await db.execute(
+        update(StudentProfile)
+        .where(StudentProfile.student_id == student_id)
+        .where(StudentProfile.is_current.is_(True))
+        .values(is_current=False)
+    )
+    profile = StudentProfile(
+        id=uuid4(),
+        institution_id=institution_id,
+        student_id=student_id,
+        derived_from_response_id=response.id,
+        version=int(version) + 1,
+        is_current=True,
+        scored_at=now,
+        scoring_engine_version=FSLSM_SCORER_VERSION,
+        active_reflective_score=score.active_reflective,
+        sensing_intuitive_score=score.sensing_intuitive,
+        visual_verbal_score=score.visual_verbal,
+        sequential_global_score=score.sequential_global,
+        dominant_axis=FslsmAxis(dominant.value) if dominant else None,
+    )
+    db.add(profile)
+    await db.flush()
+    return SingleResponseWrite(response.id, profile.id, score)
+
+
+async def write_aux_profile(
+    db: AsyncSession,
+    *,
+    institution_id: UUID,
+    student_id: UUID,
+    academic_term_id: UUID | None,
+    collaboration_pref: CollabPref | None,
+    participation_level: ParticipationLevel | None,
+    now: datetime,
+) -> UUID:
+    """New current aux profile for this student and term."""
+    await db.execute(
+        update(StudentAuxProfile)
+        .where(StudentAuxProfile.student_id == student_id)
+        .where(StudentAuxProfile.is_current.is_(True))
+        .where(
+            (StudentAuxProfile.academic_term_id == academic_term_id)
+            if academic_term_id is not None
+            else StudentAuxProfile.academic_term_id.is_(None)
+        )
+        .values(is_current=False)
+    )
+    aux = StudentAuxProfile(
+        id=uuid4(),
+        institution_id=institution_id,
+        student_id=student_id,
+        academic_term_id=academic_term_id,
+        collaboration_pref=collaboration_pref,
+        participation_level=participation_level,
+        is_current=True,
+        collected_at=now,
+    )
+    db.add(aux)
+    await db.flush()
+    return aux.id

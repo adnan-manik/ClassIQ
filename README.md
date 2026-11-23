@@ -59,7 +59,7 @@ npm ci                            # migration runner + isolated SQL tests
 
 # Apply core schema, then the auth trigger + minimal seed
 PGPASSWORD='<db-password>' node run_migrations.mjs schema.sql
-PGPASSWORD='<db-password>' node run_migrations.mjs migration_institution_admin.sql auth_trigger.sql seed_minimal.sql migrations/2026-09-04_seed_ils_instrument.sql migrations/2026-09-04_early_warning.sql migrations/2026-10-25_browser_read_only.sql migrations/2026-10-26_ingestion_scope.sql migrations/2026-11-07_simulation_read_indexes.sql
+PGPASSWORD='<db-password>' node run_migrations.mjs migration_institution_admin.sql auth_trigger.sql seed_minimal.sql migrations/2026-09-04_seed_ils_instrument.sql migrations/2026-09-04_early_warning.sql migrations/2026-10-25_browser_read_only.sql migrations/2026-10-26_ingestion_scope.sql migrations/2026-11-07_simulation_read_indexes.sql migrations/2026-11-19_student_academic_fields.sql migrations/2026-11-23_survey_forms.sql
 
 # (optional) richer demo cohort for dashboards
 PGPASSWORD='<db-password>' node seed_demo_data.mjs

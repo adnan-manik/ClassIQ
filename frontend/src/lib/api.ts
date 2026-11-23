@@ -10,6 +10,11 @@ import type {
   ChatTurn,
   EarlyWarningOverview,
   EvaluateResponse,
+  FormMeta,
+  FormSettings,
+  FormStatus,
+  FormSubmissionShape,
+  SurveyFormShape,
   FlagShape,
   InstitutionAnalyticsOverview,
   IngestionJob,
@@ -401,5 +406,58 @@ export function askClassIQ(
       }),
     },
     "Ask ClassIQ",
+  );
+}
+
+// ─── Survey forms (staff) ───────────────────────────────────────────────────
+
+export function listForms(): Promise<SurveyFormShape[]> {
+  return requestJson("/api/forms", {}, "List forms");
+}
+
+export function getFormMeta(): Promise<FormMeta> {
+  return requestJson("/api/forms/meta", {}, "Load form options");
+}
+
+export function createForm(input: Partial<FormSettings> & { title: string }): Promise<SurveyFormShape> {
+  return requestJson(
+    "/api/forms",
+    { method: "POST", body: JSON.stringify(input) },
+    "Create form",
+  );
+}
+
+export function getForm(id: string): Promise<SurveyFormShape> {
+  return requestJson(`/api/forms/${id}`, {}, "Load form");
+}
+
+export function updateForm(
+  id: string,
+  changes: Partial<FormSettings> & { status?: FormStatus },
+): Promise<SurveyFormShape> {
+  return requestJson(
+    `/api/forms/${id}`,
+    { method: "PATCH", body: JSON.stringify(changes) },
+    "Save form",
+  );
+}
+
+export function regenerateFormCode(id: string): Promise<SurveyFormShape> {
+  return requestJson(`/api/forms/${id}/code`, { method: "POST" }, "Issue new code");
+}
+
+export function deleteForm(id: string): Promise<void> {
+  return requestJson(`/api/forms/${id}`, { method: "DELETE" }, "Delete form");
+}
+
+export function listFormSubmissions(id: string): Promise<FormSubmissionShape[]> {
+  return requestJson(`/api/forms/${id}/submissions`, {}, "Load submissions");
+}
+
+export function voidFormSubmission(formId: string, submissionId: string): Promise<void> {
+  return requestJson(
+    `/api/forms/${formId}/submissions/${submissionId}/void`,
+    { method: "POST" },
+    "Void submission",
   );
 }

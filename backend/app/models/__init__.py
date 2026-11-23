@@ -52,6 +52,11 @@ from app.models.survey import (
     SurveyQuestion,
     SurveyResponse,
 )
+from app.models.survey_form import (
+    SurveyForm,
+    SurveyFormStatus,
+    SurveyFormSubmission,
+)
 from app.models.teacher import (
     InteractionLevel,
     PacingPref,

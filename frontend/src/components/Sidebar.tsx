@@ -6,6 +6,7 @@ import {
   BarChart3,
   BookOpen,
   Building2,
+  ClipboardList,
   FileBarChart,
   FlaskConical,
   GitBranchPlus,
@@ -36,6 +37,7 @@ const HOD_NAV = [
   { href: "/longitudinal", label: "Longitudinal", icon: TrendingUp },
   { href: "/ask", label: "Ask ClassIQ", icon: Sparkles },
   { href: "/ingestion", label: "Survey Ingestion", icon: Upload },
+  { href: "/forms", label: "Survey Forms", icon: ClipboardList },
 ] as const;
 
 const TEACHER_NAV = [
@@ -57,6 +59,7 @@ const INSTITUTION_ADMIN_NAV = [
   { href: "/longitudinal", label: "Longitudinal", icon: TrendingUp },
   { href: "/ask", label: "Ask ClassIQ", icon: Sparkles },
   { href: "/ingestion", label: "Survey Ingestion", icon: Upload },
+  { href: "/forms", label: "Survey Forms", icon: ClipboardList },
 ] as const;
 
 const SUPER_ADMIN_NAV = [
