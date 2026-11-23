@@ -279,7 +279,17 @@ export default function FormBuilder({
     }
   }
 
+  // Classmates are listed from the form's section or department, so the
+  // backend refuses peer relations without one. Catch it here instead.
+  const peersNeedScope = s.collect_peers && !s.section_id && !s.department_id;
+
   async function save() {
+    if (peersNeedScope) {
+      setError(
+        "Classmate relations need a department or section, so students know whom to pick from. Choose one under “Classmate relations” or in the scope fields above.",
+      );
+      return;
+    }
     const body: Partial<FormSettings> = {};
     for (const k of SETTING_KEYS) (body as Record<string, unknown>)[k] = s[k];
     const next = await run("save", () => updateForm(form.id, body));
@@ -349,6 +359,11 @@ export default function FormBuilder({
           ? meta.default_peer_options.map((o) => ({ ...o }))
           : prev.peer_options,
       max_peer_picks: on && prev.max_peer_picks === 0 ? 5 : prev.max_peer_picks,
+      // With a single department in reach (an HoD), scope to it right away.
+      department_id:
+        on && !prev.department_id && !prev.section_id && scope.departments.length === 1
+          ? scope.departments[0].id
+          : prev.department_id,
     }));
     setNotice(null);
   }
@@ -572,7 +587,8 @@ export default function FormBuilder({
               </div>
               <p className="text-xs" style={{ color: BRAND.textMuted }}>
                 Scope decides which students can be matched and which classmates are listed.
-                Leave all three empty to allow anyone in your institution.
+                Leave all three empty to allow anyone in your institution. Classmate relations
+                need a department or section.
               </p>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
@@ -663,6 +679,31 @@ export default function FormBuilder({
             />
             {s.collect_peers && (
               <div className="mt-3 space-y-4">
+                {peersNeedScope && (
+                  <div
+                    role="status"
+                    className="rounded-xl px-4 py-3 space-y-2"
+                    style={{ backgroundColor: "#FFFBEB", border: "1px solid #FDE68A" }}
+                  >
+                    <p className="text-sm" style={{ color: "#92400E" }}>
+                      Choose where classmates come from. Students only see classmates in this
+                      department (or pick a section in the scope fields above).
+                    </p>
+                    <div className="max-w-xs">
+                      <Label htmlFor="f-peer-dept">Classmates from department</Label>
+                      <Select
+                        id="f-peer-dept"
+                        value=""
+                        placeholder="Choose a department"
+                        onChange={(v) => patch("department_id", v || null)}
+                        options={scope.departments.map((d) => ({
+                          value: d.id,
+                          label: `${d.name} (${d.code})`,
+                        }))}
+                      />
+                    </div>
+                  </div>
+                )}
                 <div className="max-w-xs">
                   <Label htmlFor="f-maxpeers">Max classmates per student</Label>
                   <input

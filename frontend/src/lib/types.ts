@@ -680,6 +680,7 @@ export interface StudentShift {
 
 export interface LongitudinalOverview {
   department_id: string | null;
+  section_id: string | null;
   students_total: number;
   students_with_history: number;
   versions_total: number;

@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.institution import AcademicTerm
+from app.models.section import SectionStudent
 from app.models.student import FslsmAxis, Student, StudentProfile
 from app.models.survey import SurveyResponse
 
@@ -37,6 +38,7 @@ async def profile_rows(
     *,
     student_id: UUID | None = None,
     department_id: UUID | None = None,
+    section_id: UUID | None = None,
 ) -> list[ProfileRow]:
     """Every (non-deleted) profile version with its student, term and source."""
     stmt = (
@@ -61,6 +63,15 @@ async def profile_rows(
         stmt = stmt.where(StudentProfile.student_id == student_id)
     if department_id is not None:
         stmt = stmt.where(Student.department_id == department_id)
+    if section_id is not None:
+        # Students currently on the section's roster.
+        stmt = stmt.where(
+            Student.id.in_(
+                select(SectionStudent.student_id)
+                .where(SectionStudent.section_id == section_id)
+                .where(SectionStudent.removed_at.is_(None))
+            )
+        )
     rows = (await db.execute(stmt)).all()
     return [
         ProfileRow(

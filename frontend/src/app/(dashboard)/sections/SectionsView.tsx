@@ -252,150 +252,8 @@ export default function SectionsView({
     }
   }
 
-  return (
-    <>
-      {/* ── Toolbar ──────────────────────────────────────────────── */}
-      <div className="flex items-center justify-end gap-2 flex-wrap">
-        {bulkMsg && (
-          <span className="text-xs mr-auto" style={{ color: BRAND.textMuted }}>
-            {bulkMsg}
-          </span>
-        )}
-        <button
-          type="button"
-          onClick={handleRunAll}
-          disabled={bulkRunning || simulatable.length === 0}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
-          style={{ backgroundColor: BRAND.purple }}
-        >
-          <Play size={14} />
-          {bulkRunning
-            ? "Running…"
-            : `Run Simulation${
-                simulatable.length ? ` (${simulatable.length})` : ""
-              }`}
-        </button>
-        <button
-          type="button"
-          onClick={() => setNewCourseOpen(true)}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-white transition hover:opacity-90"
-          style={{ backgroundColor: BRAND.indigo }}
-        >
-          <Plus size={16} /> New Course
-        </button>
-        <button
-          type="button"
-          onClick={() => setNewOpen(true)}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-white transition hover:opacity-90"
-          style={{ backgroundColor: BRAND.teal }}
-        >
-          <Plus size={16} /> New Section
-        </button>
-      </div>
-
-      {sections.length === 0 ? (
-        <EmptyState
-          icon={GitBranchPlus}
-          title="No sections yet"
-          description="Create your first section to start assigning teachers and students."
-          action={
-            <button
-              type="button"
-              onClick={() => setNewOpen(true)}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-white"
-              style={{ backgroundColor: BRAND.teal }}
-            >
-              <Plus size={16} /> New Section
-            </button>
-          }
-        />
-      ) : (
-        <>
-          {/* ── Overview cards ───────────────────────────────────── */}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {sections.map((sec) => {
-              const isOpen = selectedId === sec.id;
-              return (
-                <button
-                  key={sec.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedId(isOpen ? null : sec.id);
-                    setChangingTeacher(false);
-                    setTeacherError(null);
-                    setEditingRoster(false);
-                    setLifecycleMsg(null);
-                  }}
-                  className="text-left rounded-2xl bg-white p-5 transition hover:shadow-md cursor-pointer"
-                  style={{
-                    border: `1px solid ${isOpen ? BRAND.teal : BRAND.cardBorder}`,
-                    boxShadow: isOpen ? `0 0 0 3px ${BRAND.tealLight}` : undefined,
-                  }}
-                >
-                  <div className="flex items-start gap-4">
-                    <ScoreRing score={sec.sim?.score ?? 0} size={72} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <span
-                          className="font-bold text-base truncate"
-                          style={{ color: BRAND.textHeading }}
-                        >
-                          {sec.courseCode} &mdash; Section {sec.label}
-                        </span>
-                        <Badge text={sec.state} />
-                      </div>
-                      <div
-                        className="text-xs truncate mb-1"
-                        style={{ color: BRAND.textMuted }}
-                      >
-                        {sec.courseName}
-                      </div>
-                      <div
-                        className="flex items-center gap-3 text-xs"
-                        style={{ color: BRAND.textMuted }}
-                      >
-                        <span className="truncate">
-                          {sec.teacher?.full_name ?? "Unassigned"}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Users size={12} />
-                          {sec.students.length}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {sec.sim && (
-                    <div className="flex gap-1.5 mt-3 flex-wrap">
-                      <Badge text={`Outcome: ${sec.sim.outcome}`} />
-                      <Badge text={sec.sim.social} />
-                    </div>
-                  )}
-
-                  <div
-                    className="mt-3 pt-3 flex items-center justify-between text-xs font-semibold"
-                    style={{
-                      color: isOpen ? BRAND.teal : BRAND.textMuted,
-                      borderTop: `1px dashed ${BRAND.cardBorder}`,
-                    }}
-                  >
-                    <span>{isOpen ? "Hide details" : "View details"}</span>
-                    <ChevronRight
-                      size={14}
-                      style={{
-                        transform: isOpen ? "rotate(90deg)" : "rotate(0deg)",
-                        transition: "transform 0.2s",
-                      }}
-                    />
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* ── Expanded detail ─────────────────────────────────── */}
-          {selected && (
-            <div
+  // ── Expanded detail, rendered under the selected section's course ──
+  const detailPanel = selected ? (            <div
               className="rounded-2xl bg-white p-6 md:p-8 space-y-6"
               style={{ border: `2px solid ${BRAND.teal}` }}
             >
@@ -839,7 +697,180 @@ export default function SectionsView({
                 </div>
               </div>
             </div>
-          )}
+  ) : null;
+
+  // Sections grouped under their course, courses in code order.
+  const byCourse = (() => {
+    const groups = new Map<
+      string,
+      { key: string; code: string; name: string; sections: SectionCard[] }
+    >();
+    for (const sec of sections) {
+      const key = sec.courseCode || "none";
+      if (!groups.has(key)) {
+        groups.set(key, { key, code: sec.courseCode, name: sec.courseName, sections: [] });
+      }
+      groups.get(key)!.sections.push(sec);
+    }
+    return [...groups.values()].sort((a, b) => a.code.localeCompare(b.code));
+  })();
+
+  return (
+    <>
+      {/* ── Toolbar ──────────────────────────────────────────────── */}
+      <div className="flex items-center justify-end gap-2 flex-wrap">
+        {bulkMsg && (
+          <span className="text-xs mr-auto" style={{ color: BRAND.textMuted }}>
+            {bulkMsg}
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={handleRunAll}
+          disabled={bulkRunning || simulatable.length === 0}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+          style={{ backgroundColor: BRAND.purple }}
+        >
+          <Play size={14} />
+          {bulkRunning
+            ? "Running…"
+            : `Run Simulation${
+                simulatable.length ? ` (${simulatable.length})` : ""
+              }`}
+        </button>
+        <button
+          type="button"
+          onClick={() => setNewCourseOpen(true)}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-white transition hover:opacity-90"
+          style={{ backgroundColor: BRAND.indigo }}
+        >
+          <Plus size={16} /> New Course
+        </button>
+        <button
+          type="button"
+          onClick={() => setNewOpen(true)}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-white transition hover:opacity-90"
+          style={{ backgroundColor: BRAND.teal }}
+        >
+          <Plus size={16} /> New Section
+        </button>
+      </div>
+
+      {sections.length === 0 ? (
+        <EmptyState
+          icon={GitBranchPlus}
+          title="No sections yet"
+          description="Create your first section to start assigning teachers and students."
+          action={
+            <button
+              type="button"
+              onClick={() => setNewOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-white"
+              style={{ backgroundColor: BRAND.teal }}
+            >
+              <Plus size={16} /> New Section
+            </button>
+          }
+        />
+      ) : (
+        <>
+          {/* ── Sections grouped by course ──────────────────────── */}
+          {byCourse.map((group) => (
+            <section key={group.key} className="space-y-3" aria-labelledby={`course-${group.key}`}>
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <h2
+                  id={`course-${group.key}`}
+                  className="text-lg font-bold"
+                  style={{ color: BRAND.textHeading }}
+                >
+                  {group.code || "No course"}
+                  {group.name && (
+                    <span className="font-semibold" style={{ color: BRAND.textMuted }}>
+                      {" "}&mdash; {group.name}
+                    </span>
+                  )}
+                </h2>
+                <span className="text-xs" style={{ color: BRAND.textMuted }}>
+                  {group.sections.length} section{group.sections.length === 1 ? "" : "s"}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {group.sections.map((sec) => {
+              const isOpen = selectedId === sec.id;
+              return (
+                <button
+                  key={sec.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedId(isOpen ? null : sec.id);
+                    setChangingTeacher(false);
+                    setTeacherError(null);
+                    setEditingRoster(false);
+                    setLifecycleMsg(null);
+                  }}
+                  className="text-left rounded-2xl bg-white p-5 transition hover:shadow-md cursor-pointer"
+                  style={{
+                    border: `1px solid ${isOpen ? BRAND.teal : BRAND.cardBorder}`,
+                    boxShadow: isOpen ? `0 0 0 3px ${BRAND.tealLight}` : undefined,
+                  }}
+                >
+                  <div className="flex items-start gap-4">
+                    <ScoreRing score={sec.sim?.score ?? 0} size={72} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <span
+                          className="font-bold text-base truncate"
+                          style={{ color: BRAND.textHeading }}
+                        >
+                          Section {sec.label}
+                        </span>
+                        <Badge text={sec.state} />
+                      </div>
+                      <div
+                        className="flex items-center gap-3 text-xs"
+                        style={{ color: BRAND.textMuted }}
+                      >
+                        <span className="truncate">
+                          {sec.teacher?.full_name ?? "Unassigned"}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Users size={12} />
+                          {sec.students.length}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {sec.sim && (
+                    <div className="flex gap-1.5 mt-3 flex-wrap">
+                      <Badge text={`Outcome: ${sec.sim.outcome}`} />
+                      <Badge text={sec.sim.social} />
+                    </div>
+                  )}
+
+                  <div
+                    className="mt-3 pt-3 flex items-center justify-between text-xs font-semibold"
+                    style={{
+                      color: isOpen ? BRAND.teal : BRAND.textMuted,
+                      borderTop: `1px dashed ${BRAND.cardBorder}`,
+                    }}
+                  >
+                    <span>{isOpen ? "Hide details" : "View details"}</span>
+                    <ChevronRight
+                      size={14}
+                      style={{
+                        transform: isOpen ? "rotate(90deg)" : "rotate(0deg)",
+                        transition: "transform 0.2s",
+                      }}
+                    />
+                  </div>
+                </button>
+              );
+                })}
+              </div>
+              {selected && (selected.courseCode || "none") === group.key && detailPanel}
+            </section>
+          ))}
         </>
       )}
 

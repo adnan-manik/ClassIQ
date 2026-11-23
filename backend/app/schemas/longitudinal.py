@@ -76,6 +76,7 @@ class StudentShift(APIModel):
 
 class LongitudinalOverview(APIModel):
     department_id: UUID | None
+    section_id: UUID | None = None
     students_total: int
     students_with_history: int
     versions_total: int

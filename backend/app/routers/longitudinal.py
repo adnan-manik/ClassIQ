@@ -1,6 +1,6 @@
 """S3 — longitudinal learning-style analytics.
 
-    GET /api/analytics/longitudinal?department_id=&top=      cohort view
+    GET /api/analytics/longitudinal?department_id=&section_id=&top=   cohort view
     GET /api/students/{id}/profile-history                   (lives in routers/students.py)
 
 Leverages versioned `student_profiles` (`version` + `is_current`): every new
@@ -21,6 +21,7 @@ from app.deps import require_role
 from app.models.auth_user import AuthUser, UserRole
 from app.repositories import longitudinal as repo
 from app.repositories import refs
+from app.repositories import sections as sections_repo
 from app.schemas.longitudinal import (
     AxisScores,
     LongitudinalOverview,
@@ -39,7 +40,11 @@ def _axis(d: dict[str, float | int]) -> AxisScores:
 
 
 def build_overview(
-    rows: list[repo.ProfileRow], *, department_id: UUID | None, top: int
+    rows: list[repo.ProfileRow],
+    *,
+    department_id: UUID | None,
+    top: int,
+    section_id: UUID | None = None,
 ) -> LongitudinalOverview:
     """Pure aggregation over profile rows — reused by tests."""
     by_student = repo.group_by_student(rows)
@@ -111,6 +116,7 @@ def build_overview(
 
     return LongitudinalOverview(
         department_id=department_id,
+        section_id=section_id,
         students_total=len(by_student),
         students_with_history=n_hist,
         versions_total=len(rows),
@@ -127,11 +133,18 @@ async def longitudinal(
     user: Annotated[AuthUser, Depends(_staff)],
     db: Annotated[AsyncSession, Depends(get_db)],
     department_id: UUID | None = Query(default=None),
+    section_id: UUID | None = Query(default=None),
     top: int = Query(default=15, ge=1, le=100),
 ) -> LongitudinalOverview:
     if department_id is not None and not await refs.department_in_institution(
         db, department_id, user.institution_id
     ):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Department not found")
-    rows = await repo.profile_rows(db, user.institution_id, department_id=department_id)
-    return build_overview(rows, department_id=department_id, top=top)
+    if section_id is not None and (
+        await sections_repo.get_section_row(db, user.institution_id, section_id)
+    ) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Section not found")
+    rows = await repo.profile_rows(
+        db, user.institution_id, department_id=department_id, section_id=section_id
+    )
+    return build_overview(rows, department_id=department_id, section_id=section_id, top=top)

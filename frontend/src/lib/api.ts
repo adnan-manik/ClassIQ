@@ -310,11 +310,12 @@ export function getSection(sectionId: string): Promise<SectionDetailShape> {
 // ─── S3 Longitudinal ────────────────────────────────────────────────────────
 
 export function getLongitudinal(
-  departmentId?: string | null,
+  scope: { departmentId?: string | null; sectionId?: string | null } = {},
   top = 15,
 ): Promise<LongitudinalOverview> {
   const q = new URLSearchParams({ top: String(top) });
-  if (departmentId) q.set("department_id", departmentId);
+  if (scope.departmentId) q.set("department_id", scope.departmentId);
+  if (scope.sectionId) q.set("section_id", scope.sectionId);
   return requestJson(
     `/api/analytics/longitudinal?${q.toString()}`,
     {},

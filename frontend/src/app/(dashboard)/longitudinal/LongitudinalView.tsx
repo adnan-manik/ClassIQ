@@ -8,7 +8,8 @@ import { getLongitudinal } from "@/lib/api";
 import { BRAND } from "@/lib/brand";
 import { FSLSM_AXES, type FslsmAxis, type LongitudinalOverview } from "@/lib/types";
 import { GitCompareArrows, Layers, TrendingUp, Users } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import StudentTrajectory from "./StudentTrajectory";
 import {
   CartesianGrid,
   Line,
@@ -21,20 +22,67 @@ import {
 
 const AXES = Object.keys(FSLSM_AXES) as FslsmAxis[];
 
+export interface LongitudinalSection {
+  id: string;
+  label: string;
+  courseName: string;
+  departmentId: string | null;
+}
+
+export interface LongitudinalStudent {
+  id: string;
+  full_name: string;
+  external_id: string | null;
+  department_id: string | null;
+}
+
 export default function LongitudinalView({
   departments,
+  sections,
+  students,
+  roster,
 }: {
   departments: { id: string; name: string; code: string }[];
+  sections: LongitudinalSection[];
+  students: LongitudinalStudent[];
+  roster: { section_id: string; student_id: string }[];
 }) {
   const [deptId, setDeptId] = useState<string>("");
+  const [sectionId, setSectionId] = useState<string>("");
+  const [studentId, setStudentId] = useState<string>("");
   const [loaded, setLoaded] = useState<{ key: string; payload: LongitudinalOverview } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const scopeKey = `${deptId}|${sectionId}`;
+
+  // Sections offered follow the department filter.
+  const sectionChoices = useMemo(
+    () => (deptId ? sections.filter((s) => s.departmentId === deptId) : sections),
+    [sections, deptId],
+  );
+  // Students offered in the per-student view follow both filters.
+  const scopeStudents = useMemo(() => {
+    if (sectionId) {
+      const onRoster = new Set(
+        roster.filter((r) => r.section_id === sectionId).map((r) => r.student_id),
+      );
+      return students.filter((s) => onRoster.has(s.id));
+    }
+    return deptId ? students.filter((s) => s.department_id === deptId) : students;
+  }, [students, roster, deptId, sectionId]);
+  const shownStudentId = scopeStudents.some((s) => s.id === studentId) ? studentId : "";
+
+  function viewStudent(id: string) {
+    setStudentId(id);
+    // Instant, not smooth: the card grows as the history loads, and scroll
+    // anchoring would pull a still-running smooth scroll off target.
+    document.getElementById("student-trajectory")?.scrollIntoView({ block: "start" });
+  }
 
   useEffect(() => {
     let cancelled = false;
-    getLongitudinal(deptId || null, 20)
+    getLongitudinal({ departmentId: deptId || null, sectionId: sectionId || null }, 20)
       .then((payload) => {
-        if (!cancelled) setLoaded({ key: deptId, payload });
+        if (!cancelled) setLoaded({ key: scopeKey, payload });
       })
       .catch((err: unknown) => {
         if (!cancelled)
@@ -47,9 +95,9 @@ export default function LongitudinalView({
     return () => {
       cancelled = true;
     };
-  }, [deptId]);
+  }, [deptId, sectionId, scopeKey]);
 
-  const data = loaded && loaded.key === deptId ? loaded.payload : null;
+  const data = loaded && loaded.key === scopeKey ? loaded.payload : null;
   const series = data
     ? data.by_term.length >= 2
       ? data.by_term.map((b) => ({ x: b.academic_term_name, n: b.profiles, ...b.mean }))
@@ -70,23 +118,51 @@ export default function LongitudinalView({
             losing history.
           </p>
         </div>
-        {departments.length > 0 && (
-          <label className="text-xs font-semibold flex items-center gap-2" style={{ color: BRAND.textMuted }}>
-            Department
+        <div className="flex items-end gap-3 flex-wrap">
+          {departments.length > 1 && (
+            <div>
+              <div id="lg-dept" className="text-xs font-semibold mb-1" style={{ color: BRAND.textMuted }}>
+                Department
+              </div>
+              <Select
+                aria-labelledby="lg-dept"
+                value={deptId}
+                onChange={(v) => {
+                  setError(null);
+                  setDeptId(v);
+                  // Drop a section that belongs to another department.
+                  if (v && sections.find((x) => x.id === sectionId)?.departmentId !== v) {
+                    setSectionId("");
+                  }
+                }}
+                className="min-w-[220px]"
+                options={[
+                  { value: "", label: "All departments" },
+                  ...departments.map((d) => ({ value: d.id, label: `${d.code} · ${d.name}` })),
+                ]}
+              />
+            </div>
+          )}
+          <div>
+            <div id="lg-section" className="text-xs font-semibold mb-1" style={{ color: BRAND.textMuted }}>
+              Section
+            </div>
             <Select
-              value={deptId}
+              aria-labelledby="lg-section"
+              value={sectionId}
               onChange={(v) => {
                 setError(null);
-                setDeptId(v);
+                setSectionId(v);
               }}
-              className="min-w-[220px]"
+              className="min-w-[240px]"
+              searchPlaceholder="Course or section…"
               options={[
-                { value: "", label: "All departments" },
-                ...departments.map((d) => ({ value: d.id, label: `${d.code} · ${d.name}` })),
+                { value: "", label: "All sections" },
+                ...sectionChoices.map((x) => ({ value: x.id, label: x.label, hint: x.courseName })),
               ]}
             />
-          </label>
-        )}
+          </div>
+        </div>
       </div>
 
       {error && (
@@ -122,6 +198,12 @@ export default function LongitudinalView({
               accent={BRAND.amber}
             />
           </div>
+
+          <StudentTrajectory
+            students={scopeStudents}
+            studentId={shownStudentId}
+            onStudentChange={setStudentId}
+          />
 
           {data.students_with_history === 0 ? (
             <EmptyState
@@ -214,8 +296,8 @@ export default function LongitudinalView({
               </h2>
               <p className="text-xs mb-4" style={{ color: BRAND.textMuted }}>
                 Students whose profile moved the most between their first and latest survey
-                (L1 distance over the four axes). Open a student on the Student Profile page
-                for the full version history.
+                (L1 distance over the four axes). Use “View” to open a student&apos;s full
+                version history above.
               </p>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -230,6 +312,9 @@ export default function LongitudinalView({
                       ))}
                       <th className="text-right px-3 py-2" style={{ color: BRAND.textMuted }}>Magnitude</th>
                       <th className="text-left px-3 py-2" style={{ color: BRAND.textMuted }}>Dominant</th>
+                      <th className="px-3 py-2">
+                        <span className="sr-only">Open</span>
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -260,6 +345,17 @@ export default function LongitudinalView({
                             <span style={{ color: BRAND.textMuted }}>→</span>
                             {s.dominant_to ? <Badge text={s.dominant_to} /> : "—"}
                           </div>
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <button
+                            type="button"
+                            onClick={() => viewStudent(s.student_id)}
+                            className="text-xs font-semibold px-3 py-1 rounded-full whitespace-nowrap"
+                            style={{ color: BRAND.teal, border: `1px solid ${BRAND.cardBorder}` }}
+                            aria-label={`View profile history for ${s.full_name}`}
+                          >
+                            View
+                          </button>
                         </td>
                       </tr>
                     ))}

@@ -61,3 +61,39 @@ def test_overview_with_no_history():
     assert ov.axis_drift is None
     assert ov.top_shifts == []
     assert ov.by_term[0].academic_term_name == "Unassigned term"
+
+
+class _CaptureSession:
+    def __init__(self):
+        self.stmt = None
+
+    async def execute(self, stmt):
+        self.stmt = stmt
+
+        class _R:
+            def all(self):
+                return []
+
+        return _R()
+
+
+def test_profile_rows_section_filter_uses_current_roster():
+    import asyncio
+
+    from sqlalchemy.dialects import postgresql
+
+    from app.repositories.longitudinal import profile_rows
+
+    db = _CaptureSession()
+    section_id = uuid4()
+    assert asyncio.run(profile_rows(db, uuid4(), section_id=section_id)) == []
+    sql = str(db.stmt.compile(dialect=postgresql.dialect()))
+    assert "section_students" in sql
+    assert "section_students.removed_at IS NULL" in sql
+
+
+def test_overview_echoes_section_id():
+    s = Student(id=uuid4(), full_name="Solo", external_id=None)
+    sid = uuid4()
+    ov = build_overview([row(s, 1, (1, 1, 1, 1))], department_id=None, section_id=sid, top=5)
+    assert ov.section_id == sid
